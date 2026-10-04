@@ -3,7 +3,7 @@
 
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
-const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed'];
+const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
 const WD = ['日','月','火','水','木','金','土'];
 
 /* ---------- 日付ユーティリティ ---------- */
@@ -69,10 +69,11 @@ function defaultState() {
       { id: uid(), name: '⭐ 今日できたら', color: PALETTE[1] },
       { id: uid(), name: '📅 今週', color: PALETTE[2] },
       { id: uid(), name: '🏖 土日やる', color: PALETTE[3] },
+      { id: MEMO_ID, name: '✍ メモ', color: '#ece3f7', type: 'memo' },
     ],
     tasks: [],
     rules: [],
-    memos: [{ id: uid(), text: '✍ ここはメモ欄です（件数には入りません）\nクリックで編集できます。URLはクリックで開けます。\nhttps://www.google.com', createdAt: Date.now() }],
+    memos: [{ id: uid(), listId: MEMO_ID, text: '✍ ここはメモ欄です（件数には入りません）\nクリックで編集できます。URLはクリックで開けます。\nhttps://www.google.com', createdAt: Date.now() }],
     lastDate: todayKey(),
   };
 }
@@ -112,6 +113,7 @@ function load() {
   }
   if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
   S.tasks ||= []; S.rules ||= []; S.memos ||= [];
+  ensureMemoLists();
 }
 function save() {
   // 端末内にも控えを残す（すぐ起動するため＆万一の保険）
@@ -120,6 +122,21 @@ function save() {
   if (window.Cloud) window.Cloud.push(S);
 }
 const listById = id => S.lists.find(l => l.id === id);
+const MEMO_ID = 'memo';                                      // 最初からあるメモ列のID
+const isMemoList = l => !!l && l.type === 'memo';
+const taskLists = () => S.lists.filter(l => !isMemoList(l));
+const memoLists = () => S.lists.filter(isMemoList);
+// メモ列の用意：古いデータ（メモ列がリストになっていない）をメモ用リストに移す。何度呼んでも同じ結果
+function ensureMemoLists() {
+  let changed = false;
+  if (!memoLists().length) {
+    S.lists.push({ id: MEMO_ID, name: '✍ メモ', color: '#ece3f7', type: 'memo' });
+    changed = true;
+  }
+  const first = memoLists()[0].id;
+  for (const m of S.memos) if (!m.listId || !isMemoList(listById(m.listId))) { m.listId = first; changed = true; }
+  return changed;
+}
 const taskById = id => S.tasks.find(t => t.id === id);
 const ruleById = id => S.rules.find(r => r.id === id);
 
@@ -226,12 +243,14 @@ let mobileTab = (() => { try { return localStorage.getItem('kyou-task-tab') || T
 function renderTabs() {
   const nav = document.getElementById('tabs');
   if (!isMobile()) { nav.hidden = true; return; }
-  if (mobileTab !== 'memo' && !listById(mobileTab)) mobileTab = TODAY_ID;
+  if (mobileTab === 'memo' && !listById('memo')) mobileTab = memoLists()[0]?.id || TODAY_ID;
+  if (!listById(mobileTab)) mobileTab = TODAY_ID;
   nav.hidden = false;
   nav.innerHTML = S.lists.map(L => {
-    const n = L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
+    const n = isMemoList(L) ? S.memos.filter(m => m.listId === L.id).length
+      : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
     return `<button class="tab ${mobileTab === L.id ? 'on' : ''}" data-tab="${L.id}" style="--c:${esc(L.color)}">${esc(L.name)}<span class="tn">${n}</span></button>`;
-  }).join('') + `<button class="tab ${mobileTab === 'memo' ? 'on' : ''}" data-tab="memo" style="--c:var(--memo)">✍ メモ</button>`;
+  }).join('');
   const on = nav.querySelector('.tab.on');
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
@@ -242,6 +261,16 @@ function render() {
   const mobile = isMobile();
   board.classList.toggle('mobile', mobile);
   for (const L of S.lists) {
+    if (isMemoList(L)) {
+      const memos = S.memos.filter(m => m.listId === L.id);
+      html.push(`<section class="col memo ${mobile && mobileTab === L.id ? 'active' : ''}" style="background:${esc(L.color)}" data-memolist="${L.id}">
+        <h2>${esc(L.name)}<span class="n">メモ ${memos.length}件</span></h2>
+        ${memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
+        <textarea class="memoadd" data-memoadd="${L.id}" rows="1" placeholder="${mobile ? '＋ メモを追加' : '＋ メモを追加（Ctrl+Enterで確定）'}"></textarea>
+        ${mobile ? `<button class="btn small primary memosave" data-memosave="${L.id}">メモを追加</button>` : ''}
+      </section>`);
+      continue;
+    }
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
@@ -255,28 +284,19 @@ function render() {
       ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>完了 ${doneToday.length}件</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
     </section>`);
   }
-  html.push(`<section class="col memo ${mobile && mobileTab === 'memo' ? 'active' : ''}">
-    <h2>✍ メモ<span class="n">件数に含めない</span></h2>
-    ${S.memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
-    <textarea class="memoadd" id="memoAdd" rows="1" placeholder="${mobile ? '＋ メモを追加' : '＋ メモを追加（Ctrl+Enterで確定）'}"></textarea>
-  </section>`);
   // 入力途中の内容とフォーカスを保持
   const active = document.activeElement;
   const keep = active && active.dataset && active.dataset.add ? { id: active.dataset.add, v: active.value } : null;
-  const memoEl = document.getElementById('memoAdd');
-  const memoKeep = memoEl ? { v: memoEl.value, focus: active === memoEl } : null;
+  // 書きかけのメモも保持
+  const memoKeep = [...board.querySelectorAll('[data-memoadd]')].filter(el => el.value).map(el => ({ id: el.dataset.memoadd, v: el.value, focus: active === el }));
   board.innerHTML = html.join('');
   if (keep) {
     const el = board.querySelector(`[data-add="${keep.id}"]`);
     if (el) { el.value = keep.v; el.focus(); }
   }
-  if (memoKeep && memoKeep.v) {
-    const el = document.getElementById('memoAdd');
-    el.value = memoKeep.v; if (memoKeep.focus) el.focus();
-  }
-  if (mobile) {
-    const memo = document.getElementById('memoAdd');
-    if (memo && !memo.nextElementSibling) memo.insertAdjacentHTML('afterend', '<button class="btn small primary memosave" id="memoSave">メモを追加</button>');
+  for (const k of memoKeep) {
+    const el = board.querySelector(`[data-memoadd="${k.id}"]`);
+    if (el) { el.value = k.v; if (k.focus) el.focus(); }
   }
   renderTabs();
   updateBadge();
@@ -317,7 +337,7 @@ let editing = null; // {mode:'task'|'new'|'rule', id, listId}
 let fDueVal = '', fTimeVal = '';
 
 function fillListSelect(sel, value) {
-  sel.innerHTML = S.lists.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  sel.innerHTML = taskLists().map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
   sel.value = value;
 }
 function setDue(v) {
@@ -460,11 +480,10 @@ function saveTaskDialog() {
 /* ---------- メモ ---------- */
 const dlgMemo = document.getElementById('dlgMemo');
 let editingMemo = null;
-function addMemo(text) {
+function addMemo(listId, text) {
   if (!text.trim()) return;
-  S.memos.push({ id: uid(), text: text.replace(/\s+$/, ''), createdAt: Date.now() });
+  S.memos.push({ id: uid(), listId, text: text.replace(/\s+$/, ''), createdAt: Date.now() });
   save(); render();
-  document.getElementById('memoAdd').focus();
 }
 
 /* ---------- リスト管理 ---------- */
@@ -473,16 +492,21 @@ let deletingList = null;
 function renderListRows() {
   const box = document.getElementById('listRows');
   box.innerHTML = S.lists.map((l, i) => {
-    const cnt = S.tasks.filter(x => x.listId === l.id || x.origListId === l.id).length + S.rules.filter(r => r.listId === l.id).length;
-    const others = S.lists.filter(o => o.id !== l.id);
+    const memo = isMemoList(l);
+    const cnt = memo ? S.memos.filter(m => m.listId === l.id).length
+      : S.tasks.filter(x => x.listId === l.id || x.origListId === l.id).length + S.rules.filter(r => r.listId === l.id).length;
+    const others = (memo ? memoLists() : taskLists()).filter(o => o.id !== l.id);
     return `<div class="lrow" data-lid="${l.id}">
+      <span class="ltype ${memo ? 'm' : ''}">${memo ? 'メモ' : 'タスク'}</span>
       <input type="text" value="${esc(l.name)}" data-lname="${l.id}">
       <div class="swatches">${PALETTE.map(c => `<button class="sw ${c === l.color ? 'on' : ''}" style="background:${c}" data-lcolor="${l.id}" data-c="${c}" title="${c}"></button>`).join('')}</div>
       <button class="btn small" data-lup="${l.id}" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="btn small" data-ldown="${l.id}" ${i === S.lists.length - 1 ? 'disabled' : ''}>↓</button>
       <button class="btn small danger" data-ldel="${l.id}" ${l.id === TODAY_ID ? 'disabled title="「今日」は削除できません"' : ''}>削除</button>
       ${deletingList === l.id ? `<div class="delbox">
-        ${cnt ? `中のタスク・繰り返し設定（${cnt}件）の移動先：<select data-lmoveto>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>` : '中にタスクはありません。'}
+        ${!cnt ? (memo ? '中にメモはありません。' : '中にタスクはありません。')
+          : memo && !others.length ? `中のメモ（${cnt}件）も一緒に削除されます。`
+          : `中の${memo ? 'メモ' : 'タスク・繰り返し設定'}（${cnt}件）の移動先：<select data-lmoveto>${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select>`}
         <button class="btn small danger" data-ldelok="${l.id}">削除する</button>
         <button class="btn small" data-ldelcancel>やめる</button>
       </div>` : ''}
@@ -490,6 +514,13 @@ function renderListRows() {
   }).join('');
 }
 function deleteList(id, moveTo) {
+  if (isMemoList(listById(id))) {
+    S.memos = moveTo ? S.memos.map(m => m.listId === id ? { ...m, listId: moveTo } : m) : S.memos.filter(m => m.listId !== id);
+    S.lists = S.lists.filter(l => l.id !== id);
+    deletingList = null;
+    save(); render(); renderListRows();
+    return;
+  }
   S.tasks.forEach(x => {
     if (x.listId === id) { x.listId = moveTo; }
     if (x.origListId === id) x.origListId = moveTo;
@@ -567,7 +598,7 @@ function importJSON(file) {
       const data = JSON.parse(fr.result);
       if (!Array.isArray(data.lists) || !Array.isArray(data.tasks)) throw new Error('きょうのタスクのバックアップ形式ではありません');
       if (!confirm(`読み込みます。今のデータは置き換わります（クラウドのデータも置き換わります）。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件`)) return;
-      S = migrate(data, fr.result); S.rules ||= []; S.memos ||= [];
+      S = migrate(data, fr.result); S.rules ||= []; S.memos ||= []; ensureMemoLists();
       if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
       dailyRefresh(); render();
       document.getElementById('dlgBackup').close();
@@ -584,7 +615,11 @@ function bind() {
   board.addEventListener('click', e => {
     const el = e.target;
     if (el.closest('a')) return; // リンクはそのまま開く
-    if (el.id === 'memoSave') { const m = document.getElementById('memoAdd'); if (m && m.value.trim()) { const v = m.value; m.value = ''; addMemo(v); } return; }
+    if (el.dataset.memosave) {
+      const m = board.querySelector(`[data-memoadd="${el.dataset.memosave}"]`);
+      if (m && m.value.trim()) { const v = m.value; m.value = ''; addMemo(el.dataset.memosave, v); }
+      return;
+    }
     if (el.dataset.done) return completeTask(el.dataset.done);
     if (el.dataset.undo) return undoTask(el.dataset.undo);
     if (el.dataset.edit) return openTaskDialog('task', el.dataset.edit);
@@ -597,7 +632,12 @@ function bind() {
     const mc = el.closest('[data-memo]');
     if (mc) {
       editingMemo = mc.dataset.memo;
-      document.getElementById('mText').value = S.memos.find(m => m.id === editingMemo).text;
+      const m = S.memos.find(z => z.id === editingMemo);
+      document.getElementById('mText').value = m.text;
+      const sel = document.getElementById('mList');
+      sel.innerHTML = memoLists().map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
+      sel.value = m.listId;
+      document.getElementById('rowMemoList').hidden = memoLists().length < 2;
       dlgMemo.showModal();
     }
   });
@@ -609,16 +649,18 @@ function bind() {
     const el = e.target;
     if (e.isComposing || e.keyCode === 229) return; // 日本語変換中のEnterは無視
     if (el.dataset.add && e.key === 'Enter') { e.preventDefault(); const v = el.value; el.value = ''; quickAdd(el.dataset.add, v); }
-    if (el.id === 'memoAdd' && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); const v = el.value; el.value = ''; addMemo(v); }
+    if (el.dataset.memoadd && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault(); const id = el.dataset.memoadd, v = el.value; el.value = ''; addMemo(id, v);
+      const again = board.querySelector(`[data-memoadd="${id}"]`); if (again) again.focus();
+    }
   });
   board.addEventListener('input', e => {
-    if (e.target.id === 'memoAdd') { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }
+    if (e.target.dataset.memoadd) { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }
   });
   board.addEventListener('focusout', e => {
     // メモ欄はフォーカスが外れたら確定
-    if (e.target.id === 'memoAdd' && e.target.value.trim()) {
-      const v = e.target.value; e.target.value = ''; addMemo(v);
-      document.getElementById('memoAdd').blur();
+    if (e.target.dataset.memoadd && e.target.value.trim()) {
+      const v = e.target.value; e.target.value = ''; addMemo(e.target.dataset.memoadd, v);
     }
   });
 
@@ -685,7 +727,7 @@ function bind() {
     const m = S.memos.find(z => z.id === editingMemo);
     const v = document.getElementById('mText').value;
     if (!v.trim()) { S.memos = S.memos.filter(z => z.id !== editingMemo); }
-    else m.text = v.replace(/\s+$/, '');
+    else { m.text = v.replace(/\s+$/, ''); m.listId = document.getElementById('mList').value || m.listId; }
     save(); render(); dlgMemo.close();
   };
   document.getElementById('btnMemoCancel').onclick = () => dlgMemo.close();
@@ -717,17 +759,20 @@ function bind() {
     else if (d.ldel) { deletingList = d.ldel; renderListRows(); }
     else if (d.ldelok) {
       const sel = lr.querySelector('[data-lmoveto]');
-      deleteList(d.ldelok, sel ? sel.value : TODAY_ID);
+      deleteList(d.ldelok, sel ? sel.value : (isMemoList(listById(d.ldelok)) ? null : TODAY_ID));
     }
     else if ('ldelcancel' in d) { deletingList = null; renderListRows(); }
   });
-  document.getElementById('btnListAdd').onclick = () => {
+  const addList = memo => {
     const used = S.lists.map(l => l.color);
-    S.lists.push({ id: uid(), name: '新しいリスト', color: PALETTE.find(c => !used.includes(c)) || PALETTE[7] });
+    const color = memo ? (['#ece3f7', '#e8eaed', '#efe6d8', '#e4f1f0'].find(c => !used.includes(c)) || '#ece3f7') : (PALETTE.find(c => !used.includes(c)) || PALETTE[7]);
+    S.lists.push(memo ? { id: uid(), name: '✍ 新しいメモ', color, type: 'memo' } : { id: uid(), name: '新しいリスト', color });
     save(); render(); renderListRows();
     const inputs = lr.querySelectorAll('[data-lname]');
     const last = inputs[inputs.length - 1]; last.focus(); last.select();
   };
+  document.getElementById('btnListAdd').onclick = () => addList(false);
+  document.getElementById('btnMemoListAdd').onclick = () => addList(true);
 
   // 繰り返し一覧・履歴
   document.getElementById('ruleRows').addEventListener('click', e => {
@@ -827,6 +872,7 @@ window.App = {
   onCloudReady() {
     cloudReady = true;
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
+    ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
     dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
     render();
   },

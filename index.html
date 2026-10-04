@@ -121,6 +121,7 @@
   <form method="dialog" id="memoForm">
     <h2>メモを編集</h2>
     <textarea id="mText" rows="8"></textarea>
+    <label class="field memolist" id="rowMemoList"><span>入れるリスト</span><select id="mList"></select></label>
     <div class="dlg-foot">
       <button type="button" class="btn danger" id="btnMemoDelete">削除</button>
       <span class="spacer"></span>
@@ -133,10 +134,11 @@
 <!-- リスト管理 -->
 <dialog id="dlgLists" class="dlg wide">
   <h2>リスト管理</h2>
-  <p class="hint">名前・色はその場で反映されます。「🔥 今日」は件数の基準なので削除できません（名前・色・順番は変更OK）。</p>
+  <p class="hint">名前・色はその場で反映されます。「🔥 今日」は件数の基準なので削除できません（名前・色・順番は変更OK）。メモのリストは件数に入りません。</p>
   <div id="listRows"></div>
   <div class="dlg-foot">
-    <button type="button" class="btn" id="btnListAdd">＋ リストを追加</button>
+    <button type="button" class="btn" id="btnListAdd">＋ タスクのリストを追加</button>
+    <button type="button" class="btn" id="btnMemoListAdd">＋ メモのリストを追加</button>
     <span class="spacer"></span>
     <button type="button" class="btn primary" data-close>閉じる</button>
   </div>
