@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -271,7 +271,7 @@ function renderTabs() {
   nav.innerHTML = S.lists.map(L => {
     const n = isMemoList(L) ? S.memos.filter(m => m.listId === L.id).length
       : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
-    return `<button class="tab ${mobileTab === L.id ? 'on' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
+    return `<button class="tab ${mobileTab === L.id ? 'on' : ''} ${L.id === TODAY_ID ? 'today' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
   }).join('');
   const on = nav.querySelector('.tab.on');
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -296,7 +296,7 @@ function render() {
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    html.push(`<section class="col win ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}">
+    html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}">
       <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
       ${open.map(taskRow).join('') || '<div class="empty">タスクは ない。</div>'}
       <div class="addrow">
