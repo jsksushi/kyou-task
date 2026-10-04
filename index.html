@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>きょうのタスク</title>
+<meta name="theme-color" content="#EB6311">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <img src="icons/icon-192.png" alt="" class="logo">
+  <h1>きょうのタスク</h1>
+  <div class="count">今日の残り<b id="cnt">0</b>件</div>
+  <nav class="actions">
+    <button class="btn" id="btnRules">🔁 繰り返し</button>
+    <button class="btn" id="btnHistory">✔ 完了履歴</button>
+    <button class="btn" id="btnLists">🗂 リスト管理</button>
+    <button class="btn" id="btnBackup">💾 バックアップ</button>
+  </nav>
+</header>
+
+<main class="board" id="board"></main>
+
+<!-- タスク編集 -->
+<dialog id="dlgTask" class="dlg">
+  <form method="dialog" id="taskForm">
+    <h2 id="taskDlgTitle">タスクを編集</h2>
+    <label class="field">
+      <span>やること</span>
+      <input type="text" id="fTitle" required autocomplete="off">
+    </label>
+    <label class="field">
+      <span>リスト</span>
+      <select id="fList"></select>
+    </label>
+    <div class="field" id="rowDue">
+      <span>期限日</span>
+      <div class="chips">
+        <button type="button" class="chip" data-due="none">なし</button>
+        <button type="button" class="chip" data-due="today">今日</button>
+        <button type="button" class="chip" data-due="tomorrow">明日</button>
+        <input type="date" id="fDue">
+      </div>
+    </div>
+    <div class="field">
+      <span>時刻（何時までに）</span>
+      <div class="chips">
+        <button type="button" class="chip" data-time="">なし</button>
+        <button type="button" class="chip" data-time="09:00">9:00</button>
+        <button type="button" class="chip" data-time="10:00">10:00</button>
+        <button type="button" class="chip" data-time="12:00">12:00</button>
+        <button type="button" class="chip" data-time="13:00">13:00</button>
+        <button type="button" class="chip" data-time="15:00">15:00</button>
+        <button type="button" class="chip" data-time="17:00">17:00</button>
+        <button type="button" class="chip" data-time="18:00">18:00</button>
+        <input type="time" id="fTime">
+      </div>
+    </div>
+    <div class="field">
+      <span>繰り返し</span>
+      <div>
+        <select id="fRepeat">
+          <option value="">なし</option>
+          <option value="daily">毎日</option>
+          <option value="weekdays">平日のみ（月〜金）</option>
+          <option value="weekly">毎週（曜日を選ぶ）</option>
+          <option value="monthly">毎月（日付を指定）</option>
+          <option value="monthEnd">毎月末日</option>
+        </select>
+        <div class="chips" id="rowWeekdays" hidden>
+          <label class="wd"><input type="checkbox" value="1">月</label>
+          <label class="wd"><input type="checkbox" value="2">火</label>
+          <label class="wd"><input type="checkbox" value="3">水</label>
+          <label class="wd"><input type="checkbox" value="4">木</label>
+          <label class="wd"><input type="checkbox" value="5">金</label>
+          <label class="wd"><input type="checkbox" value="6">土</label>
+          <label class="wd"><input type="checkbox" value="0">日</label>
+        </div>
+        <div id="rowDom" hidden class="chips">
+          毎月 <input type="number" id="fDom" min="1" max="31" value="1" class="num"> 日
+          <small class="hint">（31日など、その月にない日は月末に出ます）</small>
+        </div>
+        <small class="hint" id="repeatHint"></small>
+      </div>
+    </div>
+    <label class="field">
+      <span>補足メモ</span>
+      <textarea id="fMemo" rows="4" placeholder="URLを書くとクリックで開けます"></textarea>
+    </label>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="btnTaskDelete">削除</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="btnTaskCancel">キャンセル</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- メモ編集 -->
+<dialog id="dlgMemo" class="dlg">
+  <form method="dialog" id="memoForm">
+    <h2>メモを編集</h2>
+    <textarea id="mText" rows="8"></textarea>
+    <div class="dlg-foot">
+      <button type="button" class="btn danger" id="btnMemoDelete">削除</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="btnMemoCancel">キャンセル</button>
+      <button type="submit" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- リスト管理 -->
+<dialog id="dlgLists" class="dlg wide">
+  <h2>リスト管理</h2>
+  <p class="hint">名前・色はその場で反映されます。「🔥 今日」は件数の基準なので削除できません（名前・色・順番は変更OK）。</p>
+  <div id="listRows"></div>
+  <div class="dlg-foot">
+    <button type="button" class="btn" id="btnListAdd">＋ リストを追加</button>
+    <span class="spacer"></span>
+    <button type="button" class="btn primary" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<!-- 繰り返し一覧 -->
+<dialog id="dlgRules" class="dlg wide">
+  <h2>繰り返しタスク一覧</h2>
+  <p class="hint">設定した日になると、そのリストにタスクが出てきます（出てきた日に「🔥 今日」へ移動）。</p>
+  <div id="ruleRows"></div>
+  <div class="dlg-foot">
+    <span class="spacer"></span>
+    <button type="button" class="btn primary" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<!-- 完了履歴 -->
+<dialog id="dlgHistory" class="dlg wide">
+  <h2>完了履歴</h2>
+  <p class="hint">「戻す」で未完了に戻ります。</p>
+  <div id="historyRows"></div>
+  <div class="dlg-foot">
+    <span class="spacer"></span>
+    <button type="button" class="btn primary" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<!-- バックアップ -->
+<dialog id="dlgBackup" class="dlg">
+  <h2>バックアップ</h2>
+  <p>データはこのPCのブラウザ内だけに保存されています。ときどき書き出しておくと安心です。</p>
+  <div class="stack">
+    <button type="button" class="btn primary" id="btnExport">⬇ JSONで書き出す</button>
+    <label class="btn file">⬆ JSONを読み込む（今のデータは置き換わります）
+      <input type="file" id="fileImport" accept="application/json,.json" hidden>
+    </label>
+  </div>
+  <div class="dlg-foot">
+    <span class="spacer"></span>
+    <button type="button" class="btn" data-close>閉じる</button>
+  </div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

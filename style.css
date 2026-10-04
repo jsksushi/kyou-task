@@ -1,0 +1,99 @@
+:root{
+  --bg:#f6f6f4; --text:#202124; --sub:#5f6368; --line:#e0e0e0;
+  --red:#d93025; --accent:#EB6311; --navy:#002060;
+  --memo:#ece3f7;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;font-family:"Segoe UI","Hiragino Sans","Meiryo",sans-serif;background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+
+/* ヘッダー */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.logo{width:28px;height:28px;border-radius:7px}
+.topbar h1{margin:0;font-size:18px}
+.count{font-size:13px;color:var(--sub)}
+.count b{font-size:22px;color:var(--accent);margin:0 3px}
+.actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px 11px;font-size:12px;color:var(--sub);cursor:pointer;white-space:nowrap}
+.btn:hover{background:#f1f3f4}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(.95)}
+.btn.danger{color:var(--red);border-color:#f3c3bf}
+.btn.small{padding:3px 8px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:default}
+
+/* ボード */
+.board{flex:1;display:flex;gap:14px;padding:18px 20px;overflow-x:auto;align-items:flex-start}
+.col{flex:0 0 280px;border-radius:10px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.08);transition:outline-color .1s;outline:2px dashed transparent;outline-offset:2px}
+.col.dragover{outline-color:var(--accent)}
+.col h2{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:6px}
+.col h2 .n{margin-left:auto;font-size:12px;color:var(--sub);font-weight:400}
+
+/* タスク行 */
+.item{display:flex;gap:6px;align-items:flex-start;padding:6px 4px;border-radius:6px}
+.item:hover{background:rgba(255,255,255,.55)}
+.item[draggable=true]{cursor:grab}
+.item.dragging{opacity:.4}
+.item .body{flex:1;min-width:0}
+.item .title{line-height:1.45;cursor:pointer;word-break:break-word}
+.item .title:hover{text-decoration:underline}
+.meta{font-size:11px;color:var(--sub);margin-top:2px;display:flex;gap:5px;flex-wrap:wrap}
+.tag{background:rgba(0,0,0,.06);border-radius:4px;padding:0 4px}
+.tmemo{font-size:12px;color:#3c4043;margin-top:3px;white-space:pre-wrap;word-break:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.overdue .title,.overdue .due{color:var(--red);font-weight:600}
+.future .title{color:var(--sub)}
+.donebtn{flex:0 0 auto;border:1px solid rgba(0,0,0,.18);background:rgba(255,255,255,.7);border-radius:12px;padding:2px 9px;font-size:11px;cursor:pointer;color:var(--sub);margin-top:1px}
+.donebtn:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.done .title{text-decoration:line-through;color:var(--sub)}
+a{color:#1a73e8}
+
+.addrow{display:flex;gap:4px;margin-top:6px;border-top:1px dashed rgba(0,0,0,.15);padding-top:4px}
+.add{flex:1;border:none;background:transparent;padding:6px 4px;font-size:13px;outline:none;min-width:0}
+.add:focus{background:rgba(255,255,255,.6);border-radius:4px}
+.more{border:none;background:transparent;cursor:pointer;color:var(--sub);font-size:12px;padding:0 6px;border-radius:4px}
+.more:hover{background:rgba(255,255,255,.6)}
+details{margin-top:6px;font-size:12px;color:var(--sub)}
+details summary{cursor:pointer;padding:4px}
+.empty{font-size:12px;color:var(--sub);padding:6px 4px}
+
+/* メモ列 */
+.col.memo{background:var(--memo)}
+.memocard{margin:0 0 10px;padding:9px 10px;background:rgba(255,255,255,.65);border-radius:6px;white-space:pre-wrap;word-break:break-word;line-height:1.5;font-size:13px;cursor:pointer}
+.memocard:hover{background:rgba(255,255,255,.85)}
+.memoadd{width:100%;border:none;border-top:1px dashed rgba(0,0,0,.15);background:transparent;padding:8px 4px;font-size:13px;outline:none;resize:vertical;min-height:36px}
+.memoadd:focus{background:rgba(255,255,255,.6)}
+
+/* ダイアログ */
+.dlg{border:none;border-radius:12px;padding:20px 22px;width:min(520px,94vw);box-shadow:0 10px 40px rgba(0,0,0,.25)}
+.dlg.wide{width:min(680px,94vw)}
+.dlg::backdrop{background:rgba(0,0,0,.35)}
+.dlg h2{margin:0 0 14px;font-size:17px}
+.field{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:start;margin-bottom:12px}
+.field>span{font-size:12px;color:var(--sub);padding-top:7px}
+.field input[type=text],.field select,.field textarea,#mText{width:100%;border:1px solid var(--line);border-radius:6px;padding:7px 9px;background:#fff}
+#mText{resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:2px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:14px;padding:4px 10px;font-size:12px;cursor:pointer}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chips input[type=date],.chips input[type=time]{border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.wd{border:1px solid var(--line);border-radius:14px;padding:3px 9px;font-size:12px;cursor:pointer;display:flex;gap:3px;align-items:center}
+.num{width:60px;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.hint{display:block;font-size:11px;color:var(--sub);margin-top:4px}
+.dlg-foot{display:flex;gap:8px;align-items:center;margin-top:16px}
+.spacer{flex:1}
+.stack{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.btn.file{text-align:center}
+
+/* リスト管理・一覧 */
+.lrow{display:flex;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;flex-wrap:wrap}
+.lrow input[type=text]{flex:1;min-width:140px;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.swatches{display:flex;gap:3px}
+.sw{width:20px;height:20px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+.sw.on{border-color:var(--navy)}
+.delbox{width:100%;background:#fff4f2;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hrow{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid #f0f0f0}
+.hrow .t{flex:1;min-width:0}
+.hrow .s{font-size:11px;color:var(--sub)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle;border:1px solid rgba(0,0,0,.1)}
