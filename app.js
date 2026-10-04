@@ -1,6 +1,8 @@
-/* きょうのタスク v2（クラウド同期対応） */
+/* きょうのタスク（クラウド同期対応・クラシックRPG風デザイン） */
 'use strict';
 
+// ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
+const APP_VERSION = '3.0';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -194,6 +196,13 @@ function updateBadge() {
   const n = S.tasks.filter(x => isCounted(x)).length;
   document.getElementById('cnt').textContent = n;
   document.title = n > 0 ? `(${n}) きょうのタスク` : 'きょうのタスク';
+  // きょうの しんちょく：今日クリアした分 ／（クリアした分＋のこり）
+  const t = todayKey();
+  const doneToday = S.tasks.filter(x => x.done && x.doneDate === t && ((x.due && x.due <= t) || x.listId === TODAY_ID)).length;
+  const total = doneToday + n;
+  document.getElementById('prog').textContent = `${doneToday} / ${total}`;
+  const cells = Math.min(total, 10), on = total ? Math.round(doneToday / total * cells) : 0;
+  document.getElementById('gauge').innerHTML = Array.from({ length: cells }, (_, i) => `<i class="${i < on ? 'on' : ''}"></i>`).join('');
   try {
     if ('setAppBadge' in navigator && !IS_IOS) { // iPhoneではアイコンの数字は出さない
       if (n > 0) navigator.setAppBadge(n).catch(() => {});
@@ -228,8 +237,8 @@ function taskRow(x) {
   if (r) meta.push(`<span class="tag">🔁 ${ruleLabel(r)}</span>`);
   if (x.listId === TODAY_ID && x.origListId && listById(x.origListId)) meta.push(`<span class="tag">📂 ${esc(listById(x.origListId).name)}</span>`);
   const btn = x.done
-    ? `<button class="donebtn" data-undo="${x.id}" title="未完了に戻す">戻す</button>`
-    : `<button class="donebtn" data-done="${x.id}" title="完了にする">完了</button>`;
+    ? `<button class="donebtn" data-undo="${x.id}" title="未完了に戻す">もどす</button>`
+    : `<button class="donebtn" data-done="${x.id}" title="完了にする">クリア</button>`;
   return `<div class="${cls.join(' ')}" data-id="${x.id}" draggable="${!x.done}">
     <div class="body">
       <div class="title" data-edit="${x.id}">${esc(x.title)}</div>
@@ -238,6 +247,19 @@ function taskRow(x) {
     </div>${btn}</div>`;
 }
 
+// リストの色（パステル）を、黒いウィンドウの上で読める明るい色にする
+function lightColor(hex) {
+  try {
+    const n = parseInt(String(hex).slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx - mn < 12) return '#ffffff';
+    const k = 0.55; // 彩度を上げる
+    const f = v => Math.round(Math.min(255, mx - (mx - v) / k)).toString(16).padStart(2, '0');
+    return '#' + f(r) + f(g) + f(b);
+  } catch (e) { return '#ffffff'; }
+}
+// 名前が絵文字で始まるときは ◆ ✎ を付けない（二重にならないように）
+const mark = (name, m) => (/^\p{Extended_Pictographic}/u.test(String(name)) ? '' : m + ' ');
 function isMobile() { return window.matchMedia('(max-width: 700px)').matches; }
 let mobileTab = (() => { try { return localStorage.getItem('kyou-task-tab') || TODAY_ID; } catch (e) { return TODAY_ID; } })();
 function renderTabs() {
@@ -249,7 +271,7 @@ function renderTabs() {
   nav.innerHTML = S.lists.map(L => {
     const n = isMemoList(L) ? S.memos.filter(m => m.listId === L.id).length
       : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
-    return `<button class="tab ${mobileTab === L.id ? 'on' : ''}" data-tab="${L.id}" style="--c:${esc(L.color)}">${esc(L.name)}<span class="tn">${n}</span></button>`;
+    return `<button class="tab ${mobileTab === L.id ? 'on' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
   }).join('');
   const on = nav.querySelector('.tab.on');
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -263,25 +285,25 @@ function render() {
   for (const L of S.lists) {
     if (isMemoList(L)) {
       const memos = S.memos.filter(m => m.listId === L.id);
-      html.push(`<section class="col memo ${mobile && mobileTab === L.id ? 'active' : ''}" style="background:${esc(L.color)}" data-memolist="${L.id}">
-        <h2>${esc(L.name)}<span class="n">メモ ${memos.length}件</span></h2>
+      html.push(`<section class="col win memo ${mobile && mobileTab === L.id ? 'active' : ''}" data-memolist="${L.id}">
+        <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '✎')}${esc(L.name)}<span class="n">${memos.length}</span></span>
         ${memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
-        <textarea class="memoadd" data-memoadd="${L.id}" rows="1" placeholder="${mobile ? '＋ メモを追加' : '＋ メモを追加（Ctrl+Enterで確定）'}"></textarea>
-        ${mobile ? `<button class="btn small primary memosave" data-memosave="${L.id}">メモを追加</button>` : ''}
+        <textarea class="memoadd" data-memoadd="${L.id}" rows="1" placeholder="${mobile ? '＋ メモを かきこむ' : '＋ メモを かきこむ（Ctrl+Enterで確定）'}"></textarea>
+        ${mobile ? `<button class="btn small primary memosave" data-memosave="${L.id}">メモを かきこむ</button>` : ''}
       </section>`);
       continue;
     }
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    html.push(`<section class="col ${mobile && mobileTab === L.id ? 'active' : ''}" style="background:${esc(L.color)}" data-list="${L.id}">
-      <h2>${esc(L.name)}<span class="n">${open.length}件</span></h2>
-      ${open.map(taskRow).join('') || '<div class="empty">タスクはありません</div>'}
+    html.push(`<section class="col win ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}">
+      <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
+      ${open.map(taskRow).join('') || '<div class="empty">タスクは ない。</div>'}
       <div class="addrow">
-        <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを追加' : '＋ タスクを追加（Enter）'}">
+        <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを ついか' : '＋ タスクを ついか（Enter）'}">
         <button class="more" data-addmore="${L.id}" title="日時やメモを付けて追加">詳しく</button>
       </div>
-      ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>完了 ${doneToday.length}件</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
+      ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>クリアずみ ${doneToday.length}</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
     </section>`);
   }
   // 入力途中の内容とフォーカスを保持
@@ -306,8 +328,16 @@ const openDetails = new Set();
 /* ---------- タスク操作 ---------- */
 function completeTask(id) {
   const x = taskById(id); if (!x) return;
+  const wasCounted = isCounted(x);
   x.done = true; x.doneAt = Date.now(); x.doneDate = todayKey();
   save(); render();
+  const before = levelOf(EXP);
+  addExp(1);
+  const left = S.tasks.filter(t => isCounted(t)).length;
+  let m = `「${x.title}」を クリアした！ けいけんちを 1 かくとく！`;
+  if (levelOf(EXP) > before) m += ` レベルが あがった！ Lv ${levelOf(EXP)} に なった！`;
+  if (wasCounted) m += left ? ` きょうの のこりは ${left}つ。` : ' きょうの タスクを すべて クリアした！';
+  showMsg(m);
 }
 function undoTask(id) {
   const x = taskById(id); if (!x) return;
@@ -315,6 +345,55 @@ function undoTask(id) {
   if (!listById(x.listId)) x.listId = TODAY_ID;
   autoMoveToToday();
   save(); render();
+  addExp(-1);
+  showMsg(`「${x.title}」が また あらわれた！`);
+}
+
+/* ---------- けいけんち・レベル ---------- */
+// クリア1回＝けいけんち1。10たまるごとにレベルが1上がる（Lv1からスタート）
+const EXP_PER_LEVEL = 10;
+let EXP = (() => { try { return Number(localStorage.getItem('kyou-task-exp')) || 0; } catch (e) { return 0; } })();
+const levelOf = e => Math.floor(Math.max(0, e) / EXP_PER_LEVEL) + 1;
+function renderLevel() {
+  document.getElementById('lv').textContent = levelOf(EXP);
+  document.getElementById('expFill').style.width = (Math.max(0, EXP) % EXP_PER_LEVEL) / EXP_PER_LEVEL * 100 + '%';
+  document.querySelector('.lvbox').title = `けいけんち ${EXP}（あと ${EXP_PER_LEVEL - (Math.max(0, EXP) % EXP_PER_LEVEL)} で レベルアップ）`;
+}
+function setExp(v) { EXP = Math.max(0, Number(v) || 0); try { localStorage.setItem('kyou-task-exp', EXP); } catch (e) {} renderLevel(); }
+function addExp(d) { setExp(EXP + d); if (window.Cloud && window.Cloud.addExp) window.Cloud.addExp(d); }
+
+/* ---------- メッセージ（画面の上に出て、しばらくすると引っ込む） ---------- */
+let msgTimer, msgHide;
+function showMsg(text) {
+  const wrap = document.getElementById('msgwrap'), el = document.getElementById('msg');
+  clearInterval(msgTimer); clearTimeout(msgHide);
+  wrap.classList.add('show'); el.textContent = '';
+  let i = 0;
+  msgTimer = setInterval(() => {
+    el.textContent = text.slice(0, ++i);
+    if (i >= text.length) { clearInterval(msgTimer); msgHide = setTimeout(() => wrap.classList.remove('show'), 3500); }
+  }, 40);
+}
+
+/* ---------- バージョン確認（新しい版が公開されていたら知らせる） ---------- */
+async function checkVersion() {
+  if (location.protocol === 'file:') return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = String((await r.json()).version || '');
+    const btn = document.getElementById('verNew');
+    if (v && v !== APP_VERSION) { btn.textContent = `▲ ver ${v} が あります（おして こうしん）`; btn.hidden = false; }
+    else btn.hidden = true;
+  } catch (e) { /* オフラインなどは何もしない */ }
+}
+async function updateApp() {
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg) await reg.update();
+    if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
+  } catch (e) {}
+  location.reload();
 }
 function quickAdd(listId, title) {
   title = title.trim(); if (!title) return;
@@ -853,10 +932,28 @@ function bind() {
 load();
 bind();
 render();   // まず端末内の控えで表示（クラウドの読み込みが終わったら最新に入れ替わる）
+renderLevel();
+let openedMsg = false;
+document.getElementById('ver').textContent = APP_VERSION;
+document.getElementById('verNew').onclick = updateApp;
+document.getElementById('msgwrap').onclick = () => { clearTimeout(msgHide); document.getElementById('msgwrap').classList.remove('show'); };
+function drawArt() {
+  try {
+    Art.drawStage(document.getElementById('stage'));
+    Art.drawField(document.getElementById('field'));
+    if (!document.getElementById('loginScreen').hidden) Art.drawHero(document.getElementById('loginHero'));
+  } catch (e) { console.warn(e); }
+}
+drawArt();
+if (document.fonts) document.fonts.ready.then(drawArt);
+let artTimer; window.addEventListener('resize', () => { clearTimeout(artTimer); artTimer = setTimeout(drawArt, 120); });
+checkVersion();
+setInterval(checkVersion, 30 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
 
 /* ---------- クラウド同期（sync.js）とのつなぎ ---------- */
 function cloudStatusText(st) {
-  return { linking: '☁ 準備中…', synced: '☁ 同期済み', pending: '⏳ 送信待ち', offline: '📴 オフライン（つながったら送ります）', error: '⚠ 同期エラー' }[st] || '';
+  return { linking: '☁ じゅんびちゅう…', synced: '☁ セーブずみ（同期済み）', pending: '⏳ セーブちゅう（送信待ち）', offline: '📴 オフライン（つながったら送ります）', error: '⚠ セーブに しっぱい（同期エラー）' }[st] || '';
 }
 window.App = {
   get S() { return S; },
@@ -869,8 +966,18 @@ window.App = {
     if (col === 'memos') items.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     S[col] = items;
   },
+  setExp,
+  get EXP() { return EXP; },
   onCloudReady() {
+    const first = !cloudReady && !openedMsg;
     cloudReady = true;
+    if (first) {
+      openedMsg = true;
+      setTimeout(() => {
+        const n = S.tasks.filter(x => isCounted(x)).length;
+        showMsg(n ? `きょうの タスクが ${n}つ あらわれた！` : 'きょうの タスクは まだ ない。 へいわだ…');
+      }, 600);
+    }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
     dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
@@ -887,6 +994,7 @@ window.App = {
   },
   showLogin(show) {
     document.getElementById('loginScreen').hidden = !show;
+    if (show) setTimeout(() => { try { Art.drawHero(document.getElementById('loginHero')); } catch (e) {} }, 0);
     if (show) { cloudReady = false; document.getElementById('syncStatus').textContent = ''; }
   },
   setAccount(email) { document.getElementById('accountEmail').textContent = email; },
