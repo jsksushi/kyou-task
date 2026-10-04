@@ -1,4 +1,4 @@
-/* きょうのタスク v1 */
+/* きょうのタスク v2（クラウド同期対応） */
 'use strict';
 
 const STORE_KEY = 'kyou-task-data-v1';
@@ -15,6 +15,9 @@ const addDays = (k, n) => { const d = parseKey(k); d.setDate(d.getDate() + n); r
 const lastDayOfMonth = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
 const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let cloudReady = false;          // クラウドのデータを読み込み終わったか
+const genIds = new Set();        // 繰り返しで自動生成したタスクID（同期時に完了状態を上書きしないため）
 
 function dueLabel(k) {
   const t = todayKey();
@@ -111,8 +114,10 @@ function load() {
   S.tasks ||= []; S.rules ||= []; S.memos ||= [];
 }
 function save() {
+  // 端末内にも控えを残す（すぐ起動するため＆万一の保険）
   try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); }
-  catch (e) { alert('保存に失敗しました：' + e.message); }
+  catch (e) { console.warn('local save failed', e); }
+  if (window.Cloud) window.Cloud.push(S);
 }
 const listById = id => S.lists.find(l => l.id === id);
 const taskById = id => S.tasks.find(t => t.id === id);
@@ -126,9 +131,11 @@ function generateRepeats() {
     let k = r.lastGenerated ? addDays(r.lastGenerated, 1) : t;
     let guard = 0;
     while (k <= t && guard++ < 400) {
-      if (ruleMatches(r, k)) {
+      const gid = `${r.id}_${k}`;
+      if (ruleMatches(r, k) && !taskById(gid)) {
+        genIds.add(gid);
         S.tasks.push({
-          id: uid(), title: r.title, listId: r.listId, due: k, time: r.time || '',
+          id: gid, title: r.title, listId: r.listId, due: k, time: r.time || '',
           memo: r.memo || '', ruleId: r.id, done: false, createdAt: Date.now(),
         });
       }
@@ -171,7 +178,7 @@ function updateBadge() {
   document.getElementById('cnt').textContent = n;
   document.title = n > 0 ? `(${n}) きょうのタスク` : 'きょうのタスク';
   try {
-    if ('setAppBadge' in navigator) {
+    if ('setAppBadge' in navigator && !IS_IOS) { // iPhoneではアイコンの数字は出さない
       if (n > 0) navigator.setAppBadge(n).catch(() => {});
       else navigator.clearAppBadge().catch(() => {});
     }
@@ -214,37 +221,64 @@ function taskRow(x) {
     </div>${btn}</div>`;
 }
 
+function isMobile() { return window.matchMedia('(max-width: 700px)').matches; }
+let mobileTab = (() => { try { return localStorage.getItem('kyou-task-tab') || TODAY_ID; } catch (e) { return TODAY_ID; } })();
+function renderTabs() {
+  const nav = document.getElementById('tabs');
+  if (!isMobile()) { nav.hidden = true; return; }
+  if (mobileTab !== 'memo' && !listById(mobileTab)) mobileTab = TODAY_ID;
+  nav.hidden = false;
+  nav.innerHTML = S.lists.map(L => {
+    const n = L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
+    return `<button class="tab ${mobileTab === L.id ? 'on' : ''}" data-tab="${L.id}" style="--c:${esc(L.color)}">${esc(L.name)}<span class="tn">${n}</span></button>`;
+  }).join('') + `<button class="tab ${mobileTab === 'memo' ? 'on' : ''}" data-tab="memo" style="--c:var(--memo)">✍ メモ</button>`;
+  const on = nav.querySelector('.tab.on');
+  if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
 function render() {
   const t = todayKey();
   const board = document.getElementById('board');
   const html = [];
+  const mobile = isMobile();
+  board.classList.toggle('mobile', mobile);
   for (const L of S.lists) {
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    html.push(`<section class="col" style="background:${esc(L.color)}" data-list="${L.id}">
+    html.push(`<section class="col ${mobile && mobileTab === L.id ? 'active' : ''}" style="background:${esc(L.color)}" data-list="${L.id}">
       <h2>${esc(L.name)}<span class="n">${open.length}件</span></h2>
       ${open.map(taskRow).join('') || '<div class="empty">タスクはありません</div>'}
       <div class="addrow">
-        <input class="add" data-add="${L.id}" placeholder="＋ タスクを追加（Enter）">
+        <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを追加' : '＋ タスクを追加（Enter）'}">
         <button class="more" data-addmore="${L.id}" title="日時やメモを付けて追加">詳しく</button>
       </div>
       ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>完了 ${doneToday.length}件</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
     </section>`);
   }
-  html.push(`<section class="col memo">
+  html.push(`<section class="col memo ${mobile && mobileTab === 'memo' ? 'active' : ''}">
     <h2>✍ メモ<span class="n">件数に含めない</span></h2>
     ${S.memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
-    <textarea class="memoadd" id="memoAdd" rows="1" placeholder="＋ メモを追加（Ctrl+Enterで確定）"></textarea>
+    <textarea class="memoadd" id="memoAdd" rows="1" placeholder="${mobile ? '＋ メモを追加' : '＋ メモを追加（Ctrl+Enterで確定）'}"></textarea>
   </section>`);
   // 入力途中の内容とフォーカスを保持
   const active = document.activeElement;
   const keep = active && active.dataset && active.dataset.add ? { id: active.dataset.add, v: active.value } : null;
+  const memoEl = document.getElementById('memoAdd');
+  const memoKeep = memoEl ? { v: memoEl.value, focus: active === memoEl } : null;
   board.innerHTML = html.join('');
   if (keep) {
     const el = board.querySelector(`[data-add="${keep.id}"]`);
     if (el) { el.value = keep.v; el.focus(); }
   }
+  if (memoKeep && memoKeep.v) {
+    const el = document.getElementById('memoAdd');
+    el.value = memoKeep.v; if (memoKeep.focus) el.focus();
+  }
+  if (mobile) {
+    const memo = document.getElementById('memoAdd');
+    if (memo && !memo.nextElementSibling) memo.insertAdjacentHTML('afterend', '<button class="btn small primary memosave" id="memoSave">メモを追加</button>');
+  }
+  renderTabs();
   updateBadge();
 }
 const openDetails = new Set();
@@ -517,12 +551,12 @@ function renderHistoryRows() {
 }
 
 /* ---------- バックアップ ---------- */
-function exportJSON() {
+function exportJSON(label) {
   const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   const d = new Date();
   a.href = URL.createObjectURL(blob);
-  a.download = `kyou-task-backup_${keyOf(d).replace(/-/g, '')}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  a.download = `kyou-task-backup${typeof label === 'string' ? '_' + label : ''}_${keyOf(d).replace(/-/g, '')}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -532,7 +566,7 @@ function importJSON(file) {
     try {
       const data = JSON.parse(fr.result);
       if (!Array.isArray(data.lists) || !Array.isArray(data.tasks)) throw new Error('きょうのタスクのバックアップ形式ではありません');
-      if (!confirm(`読み込みます。今のデータは置き換わります。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件`)) return;
+      if (!confirm(`読み込みます。今のデータは置き換わります（クラウドのデータも置き換わります）。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件`)) return;
       S = migrate(data, fr.result); S.rules ||= []; S.memos ||= [];
       if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
       dailyRefresh(); render();
@@ -550,6 +584,7 @@ function bind() {
   board.addEventListener('click', e => {
     const el = e.target;
     if (el.closest('a')) return; // リンクはそのまま開く
+    if (el.id === 'memoSave') { const m = document.getElementById('memoAdd'); if (m && m.value.trim()) { const v = m.value; m.value = ''; addMemo(v); } return; }
     if (el.dataset.done) return completeTask(el.dataset.done);
     if (el.dataset.undo) return undoTask(el.dataset.undo);
     if (el.dataset.edit) return openTaskDialog('task', el.dataset.edit);
@@ -741,6 +776,7 @@ function bind() {
   const overdueSig = () => S.tasks.filter(isOverdue).map(x => x.id).join(',');
   let lastSig = overdueSig();
   const tick = () => {
+    if (!cloudReady) { updateBadge(); return; }
     if (S.lastDate !== todayKey()) { dailyRefresh(); render(); lastSig = overdueSig(); }
     else {
       // 時刻を過ぎて赤表示に変わるタスクがあれば描き直す（入力中・ドラッグ中は待つ）
@@ -752,15 +788,69 @@ function bind() {
   setInterval(tick, 30 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('focus', tick);
-  // 別タブ・別ウィンドウで変更されたら反映
-  window.addEventListener('storage', e => { if (e.key === STORE_KEY) { load(); render(); } });
+  // 画面幅が変わったら（PC⇔スマホ表示）描き直す
+  window.matchMedia('(max-width: 700px)').addEventListener('change', () => render());
+  // スマホのタブ切替
+  document.getElementById('tabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]'); if (!b) return;
+    mobileTab = b.dataset.tab;
+    try { localStorage.setItem('kyou-task-tab', mobileTab); } catch (_) {}
+    render();
+    window.scrollTo(0, 0);
+  });
+  // ログイン
+  document.getElementById('btnLogin').onclick = () => window.Cloud && window.Cloud.login(false);
+  document.getElementById('btnLoginRedirect').onclick = () => window.Cloud && window.Cloud.login(true);
+  document.getElementById('btnLogout').onclick = () => window.Cloud && window.Cloud.logout();
 }
 
 /* ---------- 起動 ---------- */
 load();
-dailyRefresh();
 bind();
-render();
+render();   // まず端末内の控えで表示（クラウドの読み込みが終わったら最新に入れ替わる）
+
+/* ---------- クラウド同期（sync.js）とのつなぎ ---------- */
+function cloudStatusText(st) {
+  return { linking: '☁ 準備中…', synced: '☁ 同期済み', pending: '⏳ 送信待ち', offline: '📴 オフライン（つながったら送ります）', error: '⚠ 同期エラー' }[st] || '';
+}
+window.App = {
+  get S() { return S; },
+  DATA_VERSION,
+  genIds,
+  render,
+  exportJSON,
+  applyRemote(col, items) {
+    if (col === 'lists') items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (col === 'memos') items.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    S[col] = items;
+  },
+  onCloudReady() {
+    cloudReady = true;
+    if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
+    dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
+    render();
+  },
+  cloudStatus(st, err) {
+    const el = document.getElementById('syncStatus');
+    el.textContent = cloudStatusText(st);
+    el.className = 'sync ' + st;
+    if (err) { console.error(err); el.title = String(err.message || err); }
+    if (st === 'error' && err && err.code === 'permission-denied') {
+      alert('このアカウントではデータにアクセスできません。\n登録したGoogleアカウントでログインし直してください。');
+    }
+  },
+  showLogin(show) {
+    document.getElementById('loginScreen').hidden = !show;
+    if (show) { cloudReady = false; document.getElementById('syncStatus').textContent = ''; }
+  },
+  setAccount(email) { document.getElementById('accountEmail').textContent = email; },
+  loginError(e) {
+    console.error(e);
+    const el = document.getElementById('loginError');
+    el.hidden = false;
+    el.textContent = 'ログインできませんでした（' + (e.code || e.message || e) + '）。下の「別の方法でログイン」も試してみてください。';
+  },
+};
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
