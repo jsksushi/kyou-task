@@ -60,7 +60,7 @@ function ruleLabel(r) {
 /* ---------- データ ---------- */
 function defaultState() {
   return {
-    version: 1,
+    version: DATA_VERSION,
     lists: [
       { id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] },
       { id: uid(), name: '⭐ 今日できたら', color: PALETTE[1] },
@@ -74,11 +74,39 @@ function defaultState() {
   };
 }
 let S;
+/*
+  データの互換性ルール（改修するときは必ず守る）
+  ・保存名 STORE_KEY は変えない（変えると今までのデータが読めなくなる）
+  ・データの形を変えるときは DATA_VERSION を1つ上げ、MIGRATIONS に「古い形→新しい形」の変換を足す
+  ・項目を消したり名前を変えたりせず、足すだけにするのが基本
+  ・変換の前には、元のデータを自動で退避保存する（kyou-task-data-backup-v◯）
+*/
+const DATA_VERSION = 1;
+const MIGRATIONS = {
+  // 例）2: d => { d.tasks.forEach(t => t.priority ??= 0); return d; },
+};
+function migrate(d, raw) {
+  const from = d.version || 1;
+  if (from >= DATA_VERSION) return d;
+  try { localStorage.setItem(`${STORE_KEY.replace('-v1', '')}-backup-v${from}`, raw); } catch (e) {}
+  for (let v = from + 1; v <= DATA_VERSION; v++) if (MIGRATIONS[v]) d = MIGRATIONS[v](d);
+  d.version = DATA_VERSION;
+  return d;
+}
 function load() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    S = raw ? JSON.parse(raw) : defaultState();
-  } catch (e) { S = defaultState(); }
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) { S = defaultState(); }
+  else {
+    try {
+      S = migrate(JSON.parse(raw), raw);
+      if (!Array.isArray(S.lists) || !Array.isArray(S.tasks)) throw new Error('形式が違います');
+    } catch (e) {
+      // 読めなかったデータは消さずに退避してから、まっさらで起動する
+      try { localStorage.setItem(`kyou-task-data-broken-${Date.now()}`, raw); } catch (_) {}
+      alert('保存データを読み込めませんでした。元のデータは退避してあります。\nバックアップのJSONがあれば「💾 バックアップ」から読み込んでください。');
+      S = defaultState();
+    }
+  }
   if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
   S.tasks ||= []; S.rules ||= []; S.memos ||= [];
 }
@@ -453,17 +481,32 @@ function renderRuleRows() {
     </div>`;
   }).join('');
 }
+const histSel = new Set();
+function updateHistSel(total) {
+  const n = histSel.size;
+  const btn = document.getElementById('btnHistoryDelSel');
+  btn.disabled = !n;
+  btn.textContent = n ? `選択した${n}件を削除` : '選択したタスクを削除';
+  const all = document.getElementById('hSelAll');
+  all.checked = total > 0 && n === total;
+  all.indeterminate = n > 0 && n < total;
+}
 function renderHistoryRows() {
   const box = document.getElementById('historyRows');
   const done = S.tasks.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
   document.getElementById('btnHistoryClear').disabled = !done.length;
+  document.getElementById('rowSelAll').hidden = !done.length;
+  // 消えたタスクは選択から外す
+  for (const id of [...histSel]) if (!done.some(x => x.id === id)) histSel.delete(id);
+  updateHistSel(done.length);
   if (!done.length) { box.innerHTML = '<p class="empty">完了したタスクはまだありません。</p>'; return; }
   let lastDay = '';
   box.innerHTML = done.map(x => {
     const L = listById(x.listId);
     const head = x.doneDate !== lastDay ? `<div class="s" style="margin-top:10px;font-weight:600">${x.doneDate ? dueLabel(x.doneDate) : '日付不明'}</div>` : '';
     lastDay = x.doneDate;
-    return `${head}<div class="hrow">
+    return `${head}<div class="hrow ${histSel.has(x.id) ? 'sel' : ''}">
+      <input type="checkbox" class="hchk" data-hsel="${x.id}" ${histSel.has(x.id) ? 'checked' : ''} title="選択">
       <span class="dot" style="background:${L ? esc(L.color) : '#ccc'}"></span>
       <div class="t">${esc(x.title)}<div class="s">${L ? esc(L.name) : ''}${x.due ? '／期限 ' + dueLabel(x.due) : ''}</div></div>
       <button class="btn small" data-hundo="${x.id}">戻す</button>
@@ -489,7 +532,7 @@ function importJSON(file) {
       const data = JSON.parse(fr.result);
       if (!Array.isArray(data.lists) || !Array.isArray(data.tasks)) throw new Error('きょうのタスクのバックアップ形式ではありません');
       if (!confirm(`読み込みます。今のデータは置き換わります。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件`)) return;
-      S = data; S.rules ||= []; S.memos ||= [];
+      S = migrate(data, fr.result); S.rules ||= []; S.memos ||= [];
       if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
       dailyRefresh(); render();
       document.getElementById('dlgBackup').close();
@@ -619,7 +662,7 @@ function bind() {
   // ヘッダーボタン
   document.getElementById('btnLists').onclick = () => { deletingList = null; renderListRows(); dlgLists.showModal(); };
   document.getElementById('btnRules').onclick = () => { renderRuleRows(); document.getElementById('dlgRules').showModal(); };
-  document.getElementById('btnHistory').onclick = () => { renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
+  document.getElementById('btnHistory').onclick = () => { histSel.clear(); renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
   document.getElementById('btnBackup').onclick = () => document.getElementById('dlgBackup').showModal();
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
@@ -659,6 +702,24 @@ function bind() {
     if (!n) return;
     if (!confirm(`完了したタスク ${n}件をすべて削除します。\n元に戻せません。よろしいですか？\n（未完了のタスクと繰り返し設定はそのまま残ります）`)) return;
     S.tasks = S.tasks.filter(x => !x.done);
+    save(); render(); renderHistoryRows();
+  };
+  document.getElementById('historyRows').addEventListener('change', e => {
+    const id = e.target.dataset.hsel; if (!id) return;
+    e.target.checked ? histSel.add(id) : histSel.delete(id);
+    e.target.closest('.hrow').classList.toggle('sel', e.target.checked);
+    updateHistSel(S.tasks.filter(x => x.done).length);
+  });
+  document.getElementById('hSelAll').onchange = e => {
+    histSel.clear();
+    if (e.target.checked) S.tasks.filter(x => x.done).forEach(x => histSel.add(x.id));
+    renderHistoryRows();
+  };
+  document.getElementById('btnHistoryDelSel').onclick = () => {
+    const n = histSel.size; if (!n) return;
+    if (!confirm(`選択した ${n}件を削除します。\n元に戻せません。よろしいですか？`)) return;
+    S.tasks = S.tasks.filter(x => !histSel.has(x.id));
+    histSel.clear();
     save(); render(); renderHistoryRows();
   };
   document.getElementById('historyRows').addEventListener('click', e => {

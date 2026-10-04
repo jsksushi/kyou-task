@@ -97,3 +97,7 @@ details summary{cursor:pointer;padding:4px}
 .hrow .t{flex:1;min-width:0}
 .hrow .s{font-size:11px;color:var(--sub)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle;border:1px solid rgba(0,0,0,.1)}
+.hrow .hchk{width:16px;height:16px;cursor:pointer;flex:0 0 auto;accent-color:var(--accent)}
+.hrow.sel{background:#fff4ec}
+.selall{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--sub);cursor:pointer;margin:4px 0 2px}
+.selall input{width:16px;height:16px;accent-color:var(--accent)}

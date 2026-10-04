@@ -141,10 +141,12 @@
 <!-- 完了履歴 -->
 <dialog id="dlgHistory" class="dlg wide">
   <h2>完了履歴</h2>
-  <p class="hint">「戻す」で未完了に戻ります。</p>
+  <p class="hint">「戻す」で未完了に戻ります。左のチェックで選んでまとめて削除もできます。</p>
+  <label class="selall" id="rowSelAll"><input type="checkbox" id="hSelAll"> すべて選択</label>
   <div id="historyRows"></div>
   <div class="dlg-foot">
-    <button type="button" class="btn danger" id="btnHistoryClear">🗑 完了したタスクをすべて削除</button>
+    <button type="button" class="btn danger" id="btnHistoryDelSel" disabled>選択したタスクを削除</button>
+    <button type="button" class="btn danger" id="btnHistoryClear">🗑 すべて削除</button>
     <span class="spacer"></span>
     <button type="button" class="btn primary" data-close>閉じる</button>
   </div>
