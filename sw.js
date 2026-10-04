@@ -1,6 +1,6 @@
 /* きょうのタスク Service Worker
    ネットにつながっていれば最新版を取得し、つながっていなければ保存済みのファイルで起動する */
-const CACHE = 'kyou-task-v6';
+const CACHE = 'kyou-task-v7';
 const FILES = [
   './', './index.html', './style.css', './app.js', './sync.js', './firebase-sdk.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',

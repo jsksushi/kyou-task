@@ -146,3 +146,11 @@ details summary{cursor:pointer;padding:4px}
   .field>span{padding-top:0}
   .hrow{flex-wrap:wrap}
 }
+
+/* ---------- v2.1：PCは4列で折り返し（横スクロールなし） ---------- */
+@media (min-width:701px){
+  .board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;align-content:start;overflow-x:visible}
+  .col{min-width:0}
+}
+@media (min-width:701px) and (max-width:1200px){ .board{grid-template-columns:repeat(3,minmax(0,1fr))} }
+@media (min-width:701px) and (max-width:950px){ .board{grid-template-columns:repeat(2,minmax(0,1fr))} }
