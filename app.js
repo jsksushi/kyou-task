@@ -495,7 +495,8 @@ function renderHistoryRows() {
   const box = document.getElementById('historyRows');
   const done = S.tasks.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
   document.getElementById('btnHistoryClear').disabled = !done.length;
-  document.getElementById('rowSelAll').hidden = !done.length;
+  // 完了タスクがないときは、説明文・選択・削除ボタンを隠す
+  for (const id of ['rowSelAll', 'historyHint', 'btnHistoryDelSel', 'btnHistoryClear']) document.getElementById(id).hidden = !done.length;
   // 消えたタスクは選択から外す
   for (const id of [...histSel]) if (!done.some(x => x.id === id)) histSel.delete(id);
   updateHistSel(done.length);
