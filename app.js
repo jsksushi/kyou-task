@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.2';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -364,14 +364,16 @@ function addExp(d) { setExp(EXP + d); if (window.Cloud && window.Cloud.addExp) w
 
 /* ---------- メッセージ（画面の上に出て、しばらくすると引っ込む） ---------- */
 let msgTimer, msgHide;
-function showMsg(text) {
+// sticky=true のときは自動で引っ込まず、「OK」を押すまで出しておく
+function showMsg(text, sticky = false) {
   const wrap = document.getElementById('msgwrap'), el = document.getElementById('msg');
   clearInterval(msgTimer); clearTimeout(msgHide);
   wrap.classList.add('show'); el.textContent = '';
+  document.getElementById('msgOk').hidden = !sticky;
   let i = 0;
   msgTimer = setInterval(() => {
     el.textContent = text.slice(0, ++i);
-    if (i >= text.length) { clearInterval(msgTimer); msgHide = setTimeout(() => wrap.classList.remove('show'), 3500); }
+    if (i >= text.length) { clearInterval(msgTimer); if (!sticky) msgHide = setTimeout(() => wrap.classList.remove('show'), 3500); }
   }, 40);
 }
 
@@ -388,11 +390,16 @@ async function checkVersion() {
   } catch (e) { /* オフラインなどは何もしない */ }
 }
 async function updateApp() {
+  const btn = document.getElementById('verNew');
+  btn.textContent = 'こうしんちゅう…'; btn.disabled = true;
   try {
-    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
-    if (reg) await reg.update();
+    // ① アプリのファイルを、ブラウザの一時保存を使わずに取り直す
+    const files = ['./', 'index.html', 'style.css', 'art.js', 'app.js', 'sync.js', 'firebase-sdk.js', 'sw.js', 'manifest.webmanifest'];
+    await Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => {})));
+    // ② 古いオフライン用の仕組み（Service Worker）と保存済みファイルを外す（データは消えない）
+    if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
     if (window.caches) for (const k of await caches.keys()) await caches.delete(k);
-  } catch (e) {}
+  } catch (e) { console.warn(e); }
   location.reload();
 }
 function quickAdd(listId, title) {
@@ -936,7 +943,10 @@ renderLevel();
 let openedMsg = false;
 document.getElementById('ver').textContent = APP_VERSION;
 document.getElementById('verNew').onclick = updateApp;
-document.getElementById('msgwrap').onclick = () => { clearTimeout(msgHide); document.getElementById('msgwrap').classList.remove('show'); };
+document.getElementById('msgwrap').onclick = () => {
+  clearTimeout(msgHide); document.getElementById('msgwrap').classList.remove('show');
+  if (!document.getElementById('msgOk').hidden) { try { localStorage.setItem('kyou-task-greeted', todayKey()); } catch (e) {} }
+};
 function drawArt() {
   try {
     Art.drawStage(document.getElementById('stage'));
@@ -971,11 +981,14 @@ window.App = {
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;
-    if (first) {
+    // 「あらわれた！」は1日1回だけ（この端末で今日はじめて開いたとき）。OKを押すまで出しておく
+    let greeted = '';
+    try { greeted = localStorage.getItem('kyou-task-greeted') || ''; } catch (e) {}
+    if (first && greeted !== todayKey()) {
       openedMsg = true;
       setTimeout(() => {
         const n = S.tasks.filter(x => isCounted(x)).length;
-        showMsg(n ? `きょうの タスクが ${n}つ あらわれた！` : 'きょうの タスクは まだ ない。 へいわだ…');
+        showMsg(n ? `きょうの タスクが ${n}つ あらわれた！` : 'きょうの タスクは まだ ない。 へいわだ…', true);
       }, 600);
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });

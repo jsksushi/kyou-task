@@ -1,5 +1,5 @@
 /* きょうのタスク　ドット絵（ヘッダーの風景・下のフィールド帯）
-   キャラ・モンスターは定番のRPGの職業をもとにしたオリジナル。
+   キャラ・モンスターは定番のRPGの職業をもとにしたオリジナル（素材サイトの画像は使っていない）。
    風景の一部（雲・木・キラキラ・ドット文字）は「組織比較ツール」の描き方を移植 */
 'use strict';
 window.Art = (() => {
@@ -17,6 +17,12 @@ window.Art = (() => {
 
   /* ---- キャラ・モンスター（1文字＝1ドット、パレットで色付け） ---- */
   const SPR = {
+    // ▼ v3.1〜 メインのパーティ（2頭身・太い輪郭。ドット絵素材サイトの雰囲気に寄せたオリジナル）
+knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk...",".kxk.ksessesk...",".kxk.kssssssk...","kgggk.kkkkkk....",".kgk.kwccccwkkkk",".kskkwccccwkRSRk","..kwwccccwwkRSRk","..kswwwwwwskRRRk","...kcccccck.kkk.","...kcck.kcck....","...kffk.kffk....","...kkkk.kkkk...."],
+ wizard:[".......kk.......","......kmmk...kok",".....kmmmmk..kok","....kmmmmmmk..n.","kmmmMMMMMMmmmkn.",".kkkkkkkkkkkk.n.","...ksessesk...n.","...kwwwwwwk...n.","..kmwwwwwwmk.ksk",".kmmmwwwwmmmkkn.",".kmmmmwwmmmmk.n.",".kmmmmmmmmmmk.n.","kmmmmmmmmmmmmkn.","kkkkkkkkkkkkkkn.","...kf...kf....n."],
+ priest:[".....kkkkkk.....","....khhhhhhk....","...kcccyyccck...","...khsssssshk...","...khsesseshk...","...khsssssshk...","..khhksssskhhk..","..khkwwgwwwkhk..","..khwwwgwwwwhk..","..kswwwgwwwwsk..","..kwwwwgwwwwwk..",".kwwwwwgwwwwwwk.",".kggggggggggggk.",".kkkkkkkkkkkkkk.","....kf....kf...."],
+ archer:["......kkkk......",".....khhhhk.....","..k.khhhhhhk....",".knkhhhhhhhhk...",".kntkhsesseHk...","kn.tkhssssshk...","kn.tkkkkkkkkk...","kn.tkcccccccck..","knttscccccccsk..","kn.tkccyyccck...",".knt.kccccck....","..k..kcckcck....",".....kffkffk....",".....kkkkkkk...."],
+    // ▼ v3.0 の初代パーティ（いまは未使用。残しておくと色ちがいなどに使える）
     hero: ['...kkkkk......', '..khhhhhk.....', '.khhhhhhhk....', '.kyyyyyyyk....', '.khsseseshk...', '.kcsssssssk...', 'kcckkkkkkk..w.', 'kckttyttttk.w.', 'kckttttttsk.w.', 'kckddddddskgwg', 'kckttttttk..g.', '.kkppppppk....', '..kppkkppk....', '..kppk.kppk...', '..kffk.kffk...', '..kkkk.kkkk...'],
     mage: ['......k.......', '.....kmk......', '.....kmmk.....', '....kmmmk.....', '....kmmmmk.ooo', '...kmmymmmkooo', '.kkkkkkkkkk.n.', '...khsesehkn..', '...kssssssskn.', '...kkmmmmmkkn.', '..kmmmmmmmmsn.', '..kmmyyyymmkn.', '..kmmmmmmmmkn.', '.kmmmmmmmmmmkn', '.kmmmmmmmmmmkn', '.kkkkkkkkkkkkn', '...kf..kf...n.'],
     warrior: ['....rrr.......', '...kaaak......', '..kaaaaak.....', '.kaaaaaaak.x..', '.kAseseAAk.xx.', '.kAsssssAk.xxx', '..kkkkkkk..n..', '.kaaAaaAaakn..', 'kaaaaaaaaaasn.', 'kAaaaaaaaaAkn.', '.kAAAAAAAAkn..', '..kppppppk.n..', '..kppkkppk.n..', '..kppk.kppk...', '..kffk.kffk...', '..kkkk.kkkk...'],
@@ -27,6 +33,10 @@ window.Art = (() => {
     chest: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kbyybbbbyybk', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
   };
   const PAL = {
+    knight: { k: K, x: '#E8EEF8', g: '#C79A00', h: '#8a4a20', b: '#D23B3B', s: '#F6D2B0', e: K, w: '#F4F4F4', c: '#3A6FD8', R: '#C79A00', S: '#3A6FD8', f: '#5a4030' },
+    wizard: { k: K, m: '#7B4FC9', M: '#4a2d86', s: '#F6D2B0', e: K, w: '#F4F4F4', n: '#8a5a2a', o: '#7CE0FF', f: '#3a2a20' },
+    priest: { k: K, h: '#F6D24A', c: '#C79A00', y: '#D23B3B', s: '#F6D2B0', e: K, w: '#F4F4F4', g: '#F2A6C6', f: '#c8a060' },
+    archer: { k: K, h: '#3EA34A', H: '#1F6E2C', s: '#F6D2B0', e: K, c: '#5BD15B', y: '#8a5a2a', n: '#8a5a2a', t: '#ffffff', f: '#5a4030' },
     hero: { k: K, h: '#8a4a20', s: '#F2C9A0', e: K, y: '#FCD000', c: '#D23B3B', t: '#3A6FD8', d: '#24489a', w: '#E8EEF8', g: '#C79A00', p: '#5a4030', f: '#3a2a20' },
     mage: { k: K, m: '#7B4FC9', y: '#FCD000', o: '#7CE0FF', n: '#8a5a2a', h: '#d0d0d8', s: '#F2C9A0', e: K, f: '#3a2a20' },
     warrior: { k: K, r: '#D23B3B', a: '#C8D0E0', A: '#7880A0', s: '#E8B48A', e: K, x: '#E8EEF8', n: '#8a5a2a', p: '#5a4030', f: '#3a2a20' },
@@ -76,10 +86,10 @@ window.Art = (() => {
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 4); P(0, gy - 4, w, 5, '#5BD15B'); P(0, gy + 16, w, 8, '#c8a060'); P(0, gy + 24, w, 3, '#9a7a40');
     if (wide) {
       const px0 = w * 0.40;
-      sprite('hero', px0, gy + 20 - H('hero') * u, u); sprite('warrior', px0 - 50, gy + 20 - H('warrior') * u, u); sprite('mage', px0 - 100, gy + 20 - H('mage') * u, u); sprite('cleric', px0 - 150, gy + 20 - H('cleric') * u, u);
+      sprite('knight', px0, gy + 20 - H('knight') * u, u); sprite('wizard', px0 - 56, gy + 20 - H('wizard') * u, u); sprite('archer', px0 - 112, gy + 20 - H('archer') * u, u); sprite('priest', px0 - 168, gy + 20 - H('priest') * u, u);
       sprite('blob', px0 + 110, gy + 20 - H('blob') * u, u); sprite('bat', px0 + 150, gy - 48, u);
       g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', px0 + 52, gy - 36); g.fillText('！', px0 + 52, gy - 36);
-    } else { sprite('hero', w - 110, gy + 20 - H('hero') * u, u); sprite('blob', w - 56, gy + 20 - H('blob') * u, u); }
+    } else { sprite('knight', w - 116, gy + 20 - H('knight') * u, u); sprite('blob', w - 56, gy + 20 - H('blob') * u, u); }
     [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'));
     word(26, 20, "TODAY'S TASK", wide ? 6 : Math.max(2, Math.floor((w - 52) / 72)));
     outlined(30, wide ? 108 : 78, '〜 きょうのタスク 〜', wide ? 24 : 17);
@@ -93,6 +103,6 @@ window.Art = (() => {
     for (let x = 40; x < w - 40; x += 160) { const n = cast[i++ % cast.length]; sprite(n, x, n === 'bat' ? gy - 46 : gy - H(n) * 3 + 2, 3); pine(x + 80, gy - 26, 2); flower(x + 120, gy - 8, 2, '#F2A6C6'); }
   }
   /* ---- ログイン画面用：勇者1人 ---- */
-  function drawHero(cv) { let w, h; [g, w, h] = prep(cv); sprite('hero', (w - 14 * 4) / 2, (h - 16 * 4) / 2, 4); }
+  function drawHero(cv) { let w, h; [g, w, h] = prep(cv); sprite('knight', (w - 16 * 4) / 2, (h - 15 * 4) / 2, 4); }
   return { drawStage, drawField, drawHero };
 })();

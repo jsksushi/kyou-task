@@ -7,7 +7,7 @@ import {
   initializeApp, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver,
   GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut,
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, writeBatch, getDocFromServer, getDocsFromServer, setDoc, serverTimestamp,
+  collection, doc, onSnapshot, writeBatch, getDocFromServer, getDocsFromServer, setDoc, serverTimestamp, increment,
 } from './firebase-sdk.js';
 
 const firebaseConfig = {
@@ -56,6 +56,7 @@ let unsubs = [];
 const synced = Object.fromEntries(COLS.map(c => [c, new Map()]));
 const colRef = c => collection(db, 'users', user.uid, c);
 const metaRef = () => doc(db, 'users', user.uid, 'meta', 'info');
+const statsRef = () => doc(db, 'users', user.uid, 'meta', 'stats');   // けいけんち（exp）
 
 async function commitOps(ops) {
   for (let i = 0; i < ops.length; i += 400) {
@@ -165,6 +166,20 @@ function listen() {
     }, err => App.cloudStatus('error', err));
     unsubs.push(un);
   }
+  // けいけんち：PCとスマホで同じ値を使う。まだ無ければ、今までにクリアしたタスクの数から始める
+  let statsChecked = false;
+  unsubs.push(onSnapshot(statsRef(), snap => {
+    if (snap.exists()) { App.setExp(snap.data().exp || 0); return; }
+    if (statsChecked || snap.metadata.fromCache) return;
+    statsChecked = true;
+    const start = Math.max(App.EXP, App.S.tasks.filter(t => t.done).length);
+    setDoc(statsRef(), { exp: start }, { merge: true }).catch(err => App.cloudStatus('error', err));
+  }, err => App.cloudStatus('error', err)));
+}
+// クリアしたとき（+1）・もどしたとき（-1）。2台で同時に押しても数がずれない足し算で送る
+function addExp(d) {
+  if (!user) return;
+  setDoc(statsRef(), { exp: increment(d) }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
 function stopListening() { unsubs.forEach(u => u()); unsubs = []; ready = false; }
 
@@ -202,6 +217,7 @@ onAuthStateChanged(auth, async u => {
 
 window.Cloud = {
   push,
+  addExp,
   login,
   logout: () => { if (confirm('ログアウトします。よろしいですか？')) signOut(auth); },
 };

@@ -92,6 +92,8 @@ summary{cursor:pointer}
 .msgwrap{position:fixed;top:14px;left:50%;transform:translate(-50%,-160%);width:min(720px,calc(100vw - 28px));z-index:40;transition:transform .25s steps(5)}
 .msgwrap.show{transform:translate(-50%,0)}
 .msg{padding:16px 20px;min-height:66px;font-size:16px;line-height:1.7;cursor:pointer}
+.msgok{float:right;background:#000;color:#fff;border:2px solid #fff;border-radius:6px;padding:4px 14px;margin-left:12px;cursor:pointer;font-size:14px}
+.msgok:hover{background:#fff;color:#000}
 .msg .cur{display:inline-block;animation:bl .8s steps(1) infinite;color:var(--gold);margin-left:4px}
 
 /* ---------- ボタン共通（ダイアログ内） ---------- */
