@@ -456,6 +456,7 @@ function renderRuleRows() {
 function renderHistoryRows() {
   const box = document.getElementById('historyRows');
   const done = S.tasks.filter(x => x.done).sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
+  document.getElementById('btnHistoryClear').disabled = !done.length;
   if (!done.length) { box.innerHTML = '<p class="empty">完了したタスクはまだありません。</p>'; return; }
   let lastDay = '';
   box.innerHTML = done.map(x => {
@@ -653,6 +654,13 @@ function bind() {
   document.getElementById('ruleRows').addEventListener('click', e => {
     if (e.target.dataset.redit) openTaskDialog('rule', e.target.dataset.redit);
   });
+  document.getElementById('btnHistoryClear').onclick = () => {
+    const n = S.tasks.filter(x => x.done).length;
+    if (!n) return;
+    if (!confirm(`完了したタスク ${n}件をすべて削除します。\n元に戻せません。よろしいですか？\n（未完了のタスクと繰り返し設定はそのまま残ります）`)) return;
+    S.tasks = S.tasks.filter(x => !x.done);
+    save(); render(); renderHistoryRows();
+  };
   document.getElementById('historyRows').addEventListener('click', e => {
     const d = e.target.dataset;
     if (d.hundo) { undoTask(d.hundo); renderHistoryRows(); }
