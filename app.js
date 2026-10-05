@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.5.1';
+const APP_VERSION = '3.5.2';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -679,7 +679,8 @@ function showGet(it, extra) {
     if (t < 1 || now - t0 < DUR + 1200) getRaf = requestAnimationFrame(step);
   };
   getRaf = requestAnimationFrame(step);
-  getTimer = setTimeout(hideGet, 6500);
+  // v3.5.2：自動では消さない（OKを押すまで出しておく）
+  const ok = document.getElementById('getOk'); ok.hidden = false; setTimeout(() => ok.focus(), 50);
 }
 function hideGet() { clearTimeout(getTimer); cancelAnimationFrame(getRaf); document.getElementById('getwrap').hidden = true; }
 
@@ -1268,7 +1269,7 @@ function bind() {
     invSel = (invSel + mv + n) % n; renderItems();
     const c = document.querySelector(`#itemRows [data-cell="${invSel}"]`); if (c) c.focus();
   });
-  document.getElementById('getwrap').onclick = hideGet;
+  document.getElementById('getOk').onclick = hideGet;
   // プロフィール（なまえ・しょくぎょう）
   const dlgProfile = document.getElementById('dlgProfile');
   let pickJob = 'knight';

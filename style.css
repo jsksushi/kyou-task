@@ -256,7 +256,8 @@ input[type=checkbox]{accent-color:var(--gold)}
 .rk.r-r{color:#7cc8ff}.rk.r-s{color:#d8a0ff}.rk.r-l{color:var(--gold)}
 .ihead{color:var(--gold);font-size:13px}
 /* 宝箱を開けたときの演出 */
-.getwrap{position:fixed;inset:0;display:grid;place-items:center;z-index:45;background:rgba(8,8,30,.35);cursor:pointer}
+.getwrap{position:fixed;inset:0;display:grid;place-items:center;z-index:45;background:rgba(8,8,30,.55)}
+.getok{margin-top:10px;min-width:96px}
 .getbox{padding:14px 18px 12px;width:min(340px,92vw);text-align:center}
 #getCv{width:200px;height:150px;margin:0 auto}
 #getTxt{min-height:3.2em;margin:8px 0 0;font-size:15px;line-height:1.6}
