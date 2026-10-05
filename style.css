@@ -316,3 +316,13 @@ input[type=checkbox]{accent-color:var(--gold)}
   .mtop{display:flex;gap:8px;align-items:center;position:absolute;left:10px;top:52px;z-index:2;font-size:10.5px;color:#fff;background:rgba(0,0,0,.55);border-radius:4px;padding:2px 6px}
   .mtop button{background:none;border:1px solid rgba(255,255,255,.7);border-radius:3px;color:#fff;font-size:10.5px;padding:0 6px;cursor:pointer}
 }
+
+/* v3.8 窓・タブの並べ替え */
+.col>.ttl[draggable=true]{cursor:grab}
+.col.wdragging{opacity:.45}
+.col.wdrop-before{box-shadow:-8px 0 0 -2px var(--gold)}
+.col.wdrop-after{box-shadow:8px 0 0 -2px var(--gold)}
+.tab.lifting{box-shadow:0 0 0 2px var(--gold);position:relative;z-index:3}
+.tab.tdrop-before{box-shadow:-4px 0 0 0 var(--gold)}
+.tab.tdrop-after{box-shadow:4px 0 0 0 var(--gold)}
+@media (max-width:700px){.tab{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}}

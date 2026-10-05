@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.7.1';
+const APP_VERSION = '3.8';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -325,6 +325,17 @@ function sortTasks(a, b) {
   return ka < kb ? -1 : ka > kb ? 1 : (a.createdAt || 0) - (b.createdAt || 0);
 }
 
+/* v3.8 リスト（窓・タブ）の並び順を入れ替える：id を targetId の前（after=true なら後ろ）へ */
+function moveList(id, targetId, after) {
+  if (!id || id === targetId) return;
+  const L = listById(id); if (!L) return;
+  const rest = S.lists.filter(l => l.id !== id);
+  let i = rest.findIndex(l => l.id === targetId);
+  if (i < 0) i = rest.length; else if (after) i++;
+  rest.splice(i, 0, L);
+  S.lists = rest;
+  save(); render();
+}
 /* v3.6 手で並べた順（task.order：小さいほど上）。期限・時刻は並び順には使わず、裏の仕組み（今日への移動・赤字・件数）だけに使う */
 const newOrder = () => Date.now() + Math.random();          // 新しく入ってきたものは一番下
 const byOrder = (a, b) => {
@@ -450,7 +461,7 @@ function render() {
     if (isMemoList(L)) {
       const memos = S.memos.filter(m => m.listId === L.id);
       html.push(`<section class="col win memo ${mobile && mobileTab === L.id ? 'active' : ''}" data-memolist="${L.id}" style="${frameStyle(L)}">
-        <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '✏️')}${esc(L.name)}<span class="n">${memos.length}</span></span>
+        <span class="ttl" ${mobile ? '' : `draggable="true" data-wdrag="${L.id}" title="つかんで ドラッグすると 窓の順番を かえられます"`} style="color:${esc(lightColor(L.color))}">${mark(L.name, '✏️')}${esc(L.name)}<span class="n">${memos.length}</span></span>
         ${memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
         <textarea class="memoadd" data-memoadd="${L.id}" rows="1" placeholder="${mobile ? '＋ メモを かきこむ' : '＋ メモを かきこむ（Ctrl+Enterで確定）'}"></textarea>
         ${mobile ? `<button class="btn small primary memosave" data-memosave="${L.id}">メモを かきこむ</button>` : ''}
@@ -462,7 +473,7 @@ function render() {
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}" style="${frameStyle(L)}">
-      <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
+      <span class="ttl" ${mobile ? '' : `draggable="true" data-wdrag="${L.id}" title="つかんで ドラッグすると 窓の順番を かえられます"`} style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
       ${parents.map(parentRow).join('')}
       ${open.map(taskRow).join('') || (parents.length ? '' : '<div class="empty">タスクは ない。</div>')}
       <div class="addrow">
@@ -1238,6 +1249,38 @@ function bind() {
     placeTask(dragId, col.dataset.list, d.before);
   });
 
+  // v3.8 PC：窓のタイトルをつかんでドラッグ → 落とした窓の前（右半分なら後ろ）に入れる
+  let winDrag = null;
+  const clearWin = () => board.querySelectorAll('.wdrop-before,.wdrop-after,.wdragging').forEach(n => n.classList.remove('wdrop-before', 'wdrop-after', 'wdragging'));
+  const winTarget = e => {
+    const col = e.target.closest && e.target.closest('.col[data-list],.col[data-memolist]');
+    if (!col) return null;
+    const id = col.dataset.list || col.dataset.memolist, r = col.getBoundingClientRect();
+    return { col, id, after: e.clientX > r.left + r.width / 2 };
+  };
+  board.addEventListener('dragstart', e => {
+    const t = e.target.closest && e.target.closest('[data-wdrag]');
+    if (!t) return;
+    winDrag = t.dataset.wdrag;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'list:' + winDrag);
+    t.closest('.col').classList.add('wdragging');
+  });
+  board.addEventListener('dragover', e => {
+    if (!winDrag) return;
+    const d = winTarget(e); if (!d) return;
+    e.preventDefault();
+    board.querySelectorAll('.wdrop-before,.wdrop-after').forEach(n => n.classList.remove('wdrop-before', 'wdrop-after'));
+    if (d.id !== winDrag) d.col.classList.add(d.after ? 'wdrop-after' : 'wdrop-before');
+  });
+  board.addEventListener('drop', e => {
+    if (!winDrag) return;
+    const d = winTarget(e); e.preventDefault();
+    const id = winDrag; winDrag = null; clearWin();
+    if (d) moveList(id, d.id, d.after);
+  });
+  board.addEventListener('dragend', () => { winDrag = null; clearWin(); });
+
   // v3.6 スマホ：長押しでつかんで上下に動かす（ふつうに触るとスクロール）
   let lp = null;   // { id, el, col, timer, y0, x0, lifted }
   const lpCancel = () => { if (lp) { clearTimeout(lp.timer); if (lp.el) { lp.el.classList.remove('lifting'); lp.el.style.transform = ''; } } clearDrop(); lp = null; };
@@ -1481,7 +1524,43 @@ function bind() {
   // 画面幅が変わったら（PC⇔スマホ表示）描き直す
   window.matchMedia('(max-width: 700px)').addEventListener('change', () => { render(); renderProfile(); });
   // スマホのタブ切替
-  document.getElementById('tabs').addEventListener('click', e => {
+  // v3.8 スマホ：タブを長押しして左右に動かすと、リストの並び順が変わる（「📅 よてい」タブは動かさない）
+  const tabs = document.getElementById('tabs');
+  let tp = null;
+  const tpClear = () => { if (tp) { clearTimeout(tp.timer); if (tp.el) { tp.el.classList.remove('lifting'); tp.el.style.transform = ''; } } tabs.querySelectorAll('.tdrop-before,.tdrop-after').forEach(n => n.classList.remove('tdrop-before', 'tdrop-after')); tp = null; };
+  const tabTarget = x => {
+    const list = [...tabs.querySelectorAll('.tab[data-tab]')].filter(n => n.dataset.tab !== CAL_TAB && n.dataset.tab !== (tp && tp.id));
+    for (const n of list) { const r = n.getBoundingClientRect(); if (x < r.left + r.width / 2) return { el: n, id: n.dataset.tab, after: false }; }
+    const last = list[list.length - 1];
+    return last ? { el: last, id: last.dataset.tab, after: true } : null;
+  };
+  tabs.addEventListener('touchstart', e => {
+    const b = e.target.closest('.tab[data-tab]');
+    if (!b || b.dataset.tab === CAL_TAB || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    tp = { id: b.dataset.tab, el: b, x0: t.clientX, y0: t.clientY, lifted: false };
+    tp.timer = setTimeout(() => { if (!tp) return; tp.lifted = true; b.classList.add('lifting'); try { navigator.vibrate && navigator.vibrate(12); } catch (_) {} }, 450);
+  }, { passive: true });
+  tabs.addEventListener('touchmove', e => {
+    if (!tp) return;
+    const t = e.touches[0];
+    if (!tp.lifted) { if (Math.abs(t.clientX - tp.x0) > 8 || Math.abs(t.clientY - tp.y0) > 8) tpClear(); return; }
+    e.preventDefault();
+    tp.el.style.transform = `translateX(${t.clientX - tp.x0}px)`;
+    tabs.querySelectorAll('.tdrop-before,.tdrop-after').forEach(n => n.classList.remove('tdrop-before', 'tdrop-after'));
+    const d = tabTarget(t.clientX);
+    if (d) { d.el.classList.add(d.after ? 'tdrop-after' : 'tdrop-before'); tp.target = d; tp.moved = true; }
+  }, { passive: false });
+  tabs.addEventListener('touchend', e => {
+    if (!tp) return;
+    const lifted = tp.lifted, d = tp.moved && tp.target, id = tp.id;
+    if (lifted) { e.preventDefault(); suppressClick = Date.now(); }
+    tpClear();
+    if (d) moveList(id, d.id, d.after);
+  }, { passive: false });
+  tabs.addEventListener('touchcancel', tpClear);
+  tabs.addEventListener('click', e => {
+    if (Date.now() - suppressClick < 600) return;   // 長押しで並べ替えた直後のタップは無視
     const b = e.target.closest('[data-tab]'); if (!b) return;
     mobileTab = b.dataset.tab;
     try { localStorage.setItem('kyou-task-tab', mobileTab); } catch (_) {}
