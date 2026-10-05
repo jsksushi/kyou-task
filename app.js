@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -705,14 +705,14 @@ function renderItems() {
   const it = items[invSel];
   if (it && owned(it.id)) {
     $('invName').textContent = it.name;
-    $('invRare').textContent = RARITY[it.r].n;
+    $('invRare').textContent = 'レア度：' + RARITY[it.r].n;
     $('invRare').className = 'rk r-' + it.r;
     $('invDesc').textContent = it.d;
     try { Art.drawIcon($('invBig'), it.shape, 5, it.x); } catch (e) {}
     $('invBig').hidden = false;
   } else {
     $('invName').textContent = '？？？';
-    $('invRare').textContent = it ? RARITY[it.r].n : '';
+    $('invRare').textContent = it ? 'レア度：' + RARITY[it.r].n : '';
     $('invRare').className = 'rk' + (it ? ' r-' + it.r : '');
     $('invDesc').textContent = 'まだ みつけていない。';
     $('invBig').hidden = true;
@@ -730,7 +730,7 @@ function showGet(it, extra) {
   const step = now => {
     const t = still ? 1 : Math.min(1, (now - t0) / DUR);
     try { Art.drawGet(cv, PROFILE.job, it.shape, t, it.x); } catch (e) {}
-    if (t >= 0.75 && !txt.textContent) txt.innerHTML = `${esc(it.name)} を てにいれた！<small>${RARITY[it.r].n}　${esc(it.d)}</small>${extra ? `<b>${esc(extra)}</b>` : ''}`;
+    if (t >= 0.75 && !txt.textContent) txt.innerHTML = `${esc(it.name)} を てにいれた！<small>【レア度：${RARITY[it.r].n}】${esc(it.d)}</small>${extra ? `<b>${esc(extra)}</b>` : ''}`;
     if (t < 1 || now - t0 < DUR + 1200) getRaf = requestAnimationFrame(step);
   };
   getRaf = requestAnimationFrame(step);
@@ -1123,27 +1123,115 @@ function renderHistoryRows() {
 }
 
 /* ---------- バックアップ ---------- */
-function exportJSON(label) {
-  const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+/* ---------- v3.9 バックアップ（PC：選んだフォルダへ直接保存。1日1回の自動バックアップ・読み込み前の自動バックアップ） ----------
+   ・Chrome／Edge の「選んだフォルダに書き込む機能」（File System Access API）を使う。フォルダは最初の1回だけ選ぶ
+   ・選んだフォルダの情報は端末内（IndexedDB）に覚えておく。ブラウザの決まりで、開き直したあとは許可を聞かれることがある
+   ・使えないとき（iPhone、許可がないとき）は、今までどおりダウンロードとして保存する
+*/
+const BK_AUTO_KEEP = 7;                              // 自動バックアップは新しいほうから7つだけ残す
+const BK_AUTO_PREFIX = 'kyou-task-auto_';            // 自動で作ったファイルの名前（これだけ自動で消す）
+const BK_LAST_KEY = 'kyou-task-autobackup-date';
+const canPickDir = () => 'showDirectoryPicker' in window && !isMobile();
+let bkDir = null;                                    // 選んだフォルダ
+function bkDb() {
+  return new Promise((ok, ng) => { const r = indexedDB.open('kyou-task-backup', 1); r.onupgradeneeded = () => r.result.createObjectStore('h'); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); });
+}
+async function bkLoadDir() {
+  try { const db = await bkDb(); bkDir = await new Promise(ok => { const q = db.transaction('h').objectStore('h').get('dir'); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch (e) { bkDir = null; }
+  renderBackupInfo();
+}
+async function bkSaveDir(h) {
+  bkDir = h;
+  try { const db = await bkDb(); db.transaction('h', 'readwrite').objectStore('h').put(h, 'dir'); } catch (e) {}
+  renderBackupInfo();
+}
+// フォルダへの書き込み許可があるか（ask=true のときは、ボタンを押した直後なので許可を聞ける）
+async function bkPermitted(ask) {
+  if (!bkDir) return false;
+  try {
+    let p = await bkDir.queryPermission({ mode: 'readwrite' });
+    if (p === 'prompt' && ask) p = await bkDir.requestPermission({ mode: 'readwrite' });
+    return p === 'granted';
+  } catch (e) { return false; }
+}
+async function bkPickDir() {
+  try { const h = await window.showDirectoryPicker({ id: 'kyou-task-backup', mode: 'readwrite', startIn: 'documents' }); await bkSaveDir(h); return true; }
+  catch (e) { return false; }   // キャンセル
+}
+const stamp = () => { const d = new Date(); return `${keyOf(d).replace(/-/g, '')}_${pad(d.getHours())}${pad(d.getMinutes())}`; };
+function downloadJSON(name, text) {
   const a = document.createElement('a');
-  const d = new Date();
-  a.href = URL.createObjectURL(blob);
-  a.download = `kyou-task-backup${typeof label === 'string' ? '_' + label : ''}_${keyOf(d).replace(/-/g, '')}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+async function writeToDir(name, text) {
+  const fh = await bkDir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable(); await w.write(new Blob([text], { type: 'application/json' })); await w.close();
+}
+// 保存の本体。フォルダに書けなければダウンロードにする（auto のときは何もしない）。保存できたら保存先を返す
+async function saveBackup(name, { ask = false, auto = false } = {}) {
+  const text = JSON.stringify(S, null, 2);
+  if (canPickDir()) {
+    if (!bkDir && ask) await bkPickDir();
+    if (bkDir && await bkPermitted(ask)) {
+      try { await writeToDir(name, text); return 'dir'; } catch (e) { console.warn(e); }
+    }
+  }
+  if (auto) return '';
+  downloadJSON(name, text); return 'download';
+}
+// 「JSONで書き出す」（好きなタイミングで。自動では消さない）
+async function exportJSON(label) {
+  const name = `kyou-task-backup${typeof label === 'string' ? '_' + label : ''}_${stamp()}.json`;
+  const where = await saveBackup(name, { ask: typeof label !== 'string' });
+  if (typeof label !== 'string') showMsg(where === 'dir' ? `「${bkDir.name}」フォルダに セーブした！` : 'ダウンロードに セーブした！');
+  renderBackupInfo();
+}
+// 1日1回の自動バックアップ（PCでアプリを開いたとき）。許可がいるときは、ステータスの窓にボタンを出す
+let bkPending = false;
+async function autoBackup(fromButton) {
+  if (!canPickDir() || !bkDir || !cloudReady) { bkPending = false; renderBackupInfo(); return; }
+  let last = ''; try { last = localStorage.getItem(BK_LAST_KEY) || ''; } catch (e) {}
+  if (last === todayKey()) { bkPending = false; renderBackupInfo(); return; }
+  if (!(await bkPermitted(!!fromButton))) { bkPending = true; renderBackupInfo(); return; }
+  try {
+    await writeToDir(`${BK_AUTO_PREFIX}${keyOf(new Date()).replace(/-/g, '')}.json`, JSON.stringify(S, null, 2));
+    try { localStorage.setItem(BK_LAST_KEY, todayKey()); } catch (e) {}
+    // 古い自動バックアップを消す（自分で書き出した分・読み込み前の分は消さない）
+    const autos = [];
+    for await (const [n, h] of bkDir.entries()) if (h.kind === 'file' && n.startsWith(BK_AUTO_PREFIX) && n.endsWith('.json')) autos.push(n);
+    autos.sort().reverse().slice(BK_AUTO_KEEP).forEach(n => bkDir.removeEntry(n).catch(() => {}));
+    bkPending = false;
+    if (fromButton) showMsg('きょうの じどうバックアップを とった！');
+  } catch (e) { console.warn(e); bkPending = true; }
+  renderBackupInfo();
+}
+function renderBackupInfo() {
+  const el = document.getElementById('bkInfo');
+  if (el) {
+    if (!canPickDir()) el.innerHTML = 'この ブラウザでは、書き出したファイルは ダウンロードに 保存されます。';
+    else el.innerHTML = bkDir
+      ? `保存先：「${esc(bkDir.name)}」フォルダ <button type="button" class="linkbtn" data-bkpick>かえる</button>`
+      : `保存先：まだ えらんでいません <button type="button" class="linkbtn" data-bkpick>フォルダを えらぶ</button>`;
+  }
+  const st = document.getElementById('bkPending');
+  if (st) st.hidden = !bkPending;
+}
 function importJSON(file) {
   const fr = new FileReader();
-  fr.onload = () => {
+  fr.onload = async () => {
     try {
       const data = JSON.parse(fr.result);
       if (!Array.isArray(data.lists) || !Array.isArray(data.tasks)) throw new Error('きょうのタスクのバックアップ形式ではありません');
-      if (!confirm(`読み込みます。今のデータは置き換わります（クラウドのデータも置き換わります）。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件`)) return;
+      if (!confirm(`読み込みます。今のデータは置き換わります（クラウドのデータも置き換わります）。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件\n\n置き換える前に、今のデータを「読み込み前」として自動でバックアップします。`)) return;
+      await saveBackup(`kyou-task-backup_読み込み前_${stamp()}.json`, { ask: true });   // まちがえたら、このファイルを読み込めば戻せる
       S = migrate(data, fr.result); S.rules ||= []; S.memos ||= []; ensureMemoLists();
       if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
       dailyRefresh(); render();
       document.getElementById('dlgBackup').close();
-      alert('読み込みました');
+      alert('読み込みました。\n（読み込む前のデータは「読み込み前」のファイルとしてバックアップしてあります）');
     } catch (e) { alert('読み込めませんでした：' + e.message); }
   };
   fr.readAsText(file);
@@ -1502,7 +1590,11 @@ function bind() {
   });
 
   // バックアップ
-  document.getElementById('btnExport').onclick = exportJSON;
+  document.getElementById('btnExport').onclick = () => exportJSON();
+  document.addEventListener('click', async e => {
+    if (e.target.closest('[data-bkpick]')) { if (await bkPickDir()) autoBackup(true); }
+    if (e.target.closest('#bkPending')) autoBackup(true);
+  });
   document.getElementById('fileImport').onchange = e => { if (e.target.files[0]) importJSON(e.target.files[0]); e.target.value = ''; };
 
   // 日付の変化・時刻超過のチェック
@@ -1667,6 +1759,14 @@ function calTick() {
 }
 
 /* ---------- 起動 ---------- */
+// v3.9：ログアウトのあと最初に開いたとき、Firestore の端末内キャッシュ（IndexedDB）を消す（まだ開いていないうちに）
+try {
+  if (localStorage.getItem('kyou-task-wipe-cache') && window.indexedDB) {
+    localStorage.removeItem('kyou-task-wipe-cache');
+    indexedDB.deleteDatabase('firestore/[DEFAULT]/kyou-task/main');   // 先に消す（Firestore が開く前に順番待ちに入る）
+    if (indexedDB.databases) indexedDB.databases().then(list => list.forEach(d => { if (d.name && d.name.startsWith('firestore/') && d.name !== 'firestore/[DEFAULT]/kyou-task/main') indexedDB.deleteDatabase(d.name); })).catch(() => {});
+  }
+} catch (e) {}
 load();
 bind();
 render();   // まず端末内の控えで表示（クラウドの読み込みが終わったら最新に入れ替わる）
@@ -1681,11 +1781,33 @@ document.getElementById('msgwrap').onclick = () => {
   clearTimeout(msgHide); document.getElementById('msgwrap').classList.remove('show');
   if (!document.getElementById('msgOk').hidden) { try { localStorage.setItem('kyou-task-greeted', todayKey()); } catch (e) {} }
 };
+// v3.9 ヘッダーのキャラ・雲を動かす：小さな絵を重ねて、CSSのアニメーションで動かす（描き直さないので軽い）
+function renderStageFx(fx) {
+  const box = document.getElementById('stageFx'); if (!box || !fx) return;
+  box.innerHTML = '';
+  const kindOf = n => n === 'bat' ? 'flap' : n === 'blob' ? 'hop' : 'walk';
+  fx.actors.forEach((a, i) => {
+    const wrap = document.createElement('div'), cv = document.createElement('canvas'), kind = kindOf(a.name);
+    const m = Art.drawSheet(cv, a.name, a.u, kind);
+    wrap.className = 'fxa ' + kind;
+    wrap.style.cssText = `left:${a.x}px;top:${a.y - a.u}px;width:${m.W}px;height:${m.H}px;--d:${-(i * 0.37).toFixed(2)}s`;
+    wrap.appendChild(cv); box.appendChild(wrap);
+  });
+  fx.clouds.forEach((c, i) => {
+    const wrap = document.createElement('div'), cv = document.createElement('canvas');
+    const m = Art.drawCloud(cv, c.s), dur = 90 + i * 25;
+    // 右から左へゆっくり流れる。今の位置から始まるように、アニメーションの途中から再生する
+    const travel = fx.w + m.W + 40, startFrac = (fx.w + 20 - c.x) / travel;
+    wrap.className = 'fxc';
+    wrap.style.cssText = `top:${c.y}px;width:${m.W}px;height:${m.H}px;transform:translateX(${c.x}px);--from:${fx.w + 20}px;--to:${-m.W - 20}px;--dur:${dur}s;--delay:${-(startFrac * dur).toFixed(1)}s`;
+    wrap.appendChild(cv); box.appendChild(wrap);
+  });
+}
 function drawArt() {
   try {
     const cw = document.getElementById('calwin'), st = document.getElementById('stage');
     const reserve = cw && cw.offsetParent ? cw.getBoundingClientRect().right - st.getBoundingClientRect().left : 0;
-    Art.drawStage(st, { reserve });
+    renderStageFx(Art.drawStage(st, { reserve, fx: true }));
     Art.drawField(document.getElementById('field'));
     if (!document.getElementById('loginScreen').hidden) Art.drawHero(document.getElementById('loginHero'));
   } catch (e) { console.warn(e); }
@@ -1699,6 +1821,7 @@ document.addEventListener('click', e => {
 setInterval(calTick, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) calTick(); });
 if (calTokenOk()) calFetch(); else renderCal();
+if (canPickDir()) bkLoadDir(); else renderBackupInfo();   // v3.9 バックアップの保存先フォルダ
 drawArt();
 if (document.fonts) document.fonts.ready.then(drawArt);
 let artTimer; window.addEventListener('resize', () => { clearTimeout(artTimer); artTimer = setTimeout(drawArt, 120); });
@@ -1752,6 +1875,7 @@ window.App = {
     } catch (e) {}
     dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
     render();
+    setTimeout(() => autoBackup(false), 3000);   // v3.9 1日1回の自動バックアップ（クラウドの最新を読み終えてから）
   },
   cloudStatus(st, err) {
     const el = document.getElementById('syncStatus');
@@ -1763,9 +1887,19 @@ window.App = {
     }
   },
   showLogin(show) {
+    // v3.9：開いている画面（セーブ・アカウントなど）を閉じてから、ログイン画面を出す（閉じないとログイン画面の上に残っていた）
+    if (show) document.querySelectorAll('dialog[open]').forEach(d => d.close());
     document.getElementById('loginScreen').hidden = !show;
+    document.getElementById('loginScreen').classList.remove('checking');
     if (show) setTimeout(() => { try { Art.drawHero(document.getElementById('loginHero')); } catch (e) {} }, 0);
     if (show) { cloudReady = false; document.getElementById('syncStatus').textContent = ''; }
+  },
+  // v3.9：ログアウトしたときに、この端末の中の控えを消す（クラウドのデータは消さない）
+  wipeLocal() {
+    ['kyou-task-data-v1', 'kyou-task-profile', 'kyou-task-items', 'kyou-task-exp', 'kyou-task-cal-token', 'kyou-task-linked-uid', 'kyou-task-greeted', 'kyou-task-tab']
+      .forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    try { Object.keys(localStorage).filter(k => k.startsWith('kyou-task-data-')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    try { localStorage.setItem('kyou-task-wipe-cache', '1'); } catch (e) {}   // Firestore の端末内キャッシュは、次に開いたときに消す
   },
   setAccount(email) { document.getElementById('accountEmail').textContent = email; },
   loginError(e) {

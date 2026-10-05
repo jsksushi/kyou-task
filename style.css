@@ -326,3 +326,30 @@ input[type=checkbox]{accent-color:var(--gold)}
 .tab.tdrop-before{box-shadow:-4px 0 0 0 var(--gold)}
 .tab.tdrop-after{box-shadow:4px 0 0 0 var(--gold)}
 @media (max-width:700px){.tab{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}}
+
+/* v3.9 バックアップ */
+.bknote{margin:0 0 6px;padding-left:1.2em;font-size:12px;color:var(--sub);line-height:1.7}
+#bkInfo .linkbtn{margin:0 0 0 6px;font-size:12px}
+.bkpend{display:block;margin-top:6px;background:#000;color:var(--gold);border:2px solid var(--gold);border-radius:4px;font-size:12px;padding:2px 8px;cursor:pointer;animation:bl 1.2s steps(1) infinite}
+
+/* v3.9 ログインの確認中はボタンを出さない */
+.login .lchk{display:none}
+.login.checking .lchk{display:block}
+.login.checking .lmain,.login.checking #btnLogin,.login.checking #btnLoginRedirect,.login.checking #loginError{display:none}
+
+/* v3.9 ヘッダーのキャラ・雲の動き（ひかえめ）。重ねた小さな絵をCSSだけで動かす */
+.stagefx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.fxa{position:absolute;overflow:hidden}
+.fxa canvas{display:block;image-rendering:pixelated;max-width:none}
+.fxa.walk canvas,.fxa.flap canvas{width:200%!important;height:100%!important}
+.fxa.walk canvas{animation:walk 1.2s steps(1) infinite;animation-delay:var(--d)}
+.fxa.flap canvas{animation:walk .5s steps(1) infinite}
+.fxa.flap{animation:float 3s ease-in-out infinite}
+.fxa.hop canvas{width:100%!important;height:100%!important}
+.fxa.hop{animation:hop 2.4s infinite}
+@keyframes float{50%{transform:translateY(-4px)}}
+@keyframes hop{0%,70%,100%{transform:translateY(0)}80%{transform:translateY(-4px)}90%{transform:translateY(-1px)}}
+.fxc{position:absolute;left:0;animation:drift var(--dur) linear infinite;animation-delay:var(--delay)}
+.fxc canvas{display:block;width:100%!important;height:100%!important;image-rendering:pixelated}
+@keyframes drift{from{transform:translateX(var(--from))}to{transform:translateX(var(--to))}}
+@media (prefers-reduced-motion:reduce){.fxa,.fxa canvas,.fxc{animation:none!important}}
