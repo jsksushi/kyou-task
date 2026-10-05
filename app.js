@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.5.1';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -534,7 +534,7 @@ function renderProfile() {
   $('pfNext').textContent = `あと ${EXP_PER_LEVEL - e}`;
   $('profile').title = `けいけんち ${EXP}（あと ${EXP_PER_LEVEL - e} で レベルアップ）\nクリックで なまえ・しょくぎょうを かえられます`;
   const u = isMobile() ? 2 : 3, sig = PROFILE.job + u;
-  if (drawnJob !== sig && window.Art && Art.drawChar) { Art.drawChar($('pfHero'), PROFILE.job, u); drawnJob = sig; }
+  if (drawnJob !== sig && window.Art && Art.drawWalk) { Art.drawWalk($('pfHero'), PROFILE.job, u); drawnJob = sig; }
 }
 
 /* ---------- v3.5 たからばこ・どうぐ（1種類1個。20個そろうと次のページが開く。集めるだけ） ---------- */
@@ -585,7 +585,6 @@ const ITEMS = [
   { id: 't40', p: 2, r: 'l', shape: 'wings', name: 'ゆうきゅうのつばさ', d: 'もちぬしは いつでも ゆうきゅうを とれる。つばさは ずっと しまったまま。' },
 ];
 const MAX_PAGE = Math.max(...ITEMS.map(i => i.p));
-const OLD_ITEM_IDS = ['leaf', 'onigiri', 'stone', 'feather', 'mushroom', 'screw', 'clip', 'candy', 'key', 'compass', 'candle', 'coffee', 'map', 'coin', 'gem', 'pen', 'hourglass', 'bell', 'crown', 'stamp']; // v3.4 の宝物
 const ITEMS_KEY = 'kyou-task-items';
 let ITEM_COUNTS = {}, ITEM_PAGE = 1;
 try { const o = JSON.parse(localStorage.getItem(ITEMS_KEY) || '{}') || {}; ITEM_COUNTS = o.counts || (o.page ? {} : o); ITEM_PAGE = Number(o.page) || 1; } catch (e) {}
@@ -602,27 +601,28 @@ function pickItem() {
   const pool = cand.filter(i => i.r === rk);
   return pool[Math.floor(Math.random() * pool.length)];
 }
-let migratingItems = false;
-function setItems(counts, page, fromCloud) {
+function setItems(counts, page) {
   ITEM_COUNTS = { ...(counts || {}) };
   if (page !== undefined) ITEM_PAGE = Math.min(MAX_PAGE, Math.max(Number(page) || 1, ITEM_PAGE));   // 一度開いたページは閉じない
   try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: ITEM_COUNTS, page: ITEM_PAGE })); } catch (e) {}
-  // v3.4 の宝物（絵文字）を持っていたら、持っていた種類の数だけ新しい道具に交換する（1回だけ）
-  const old = OLD_ITEM_IDS.filter(id => (Number(ITEM_COUNTS[id]) || 0) > 0);
-  if (old.length && !migratingItems) {
-    migratingItems = true;
-    for (const id of old) {
-      addItem(id, -(Number(ITEM_COUNTS[id]) || 0));
-      const it = pickItem(); if (it) { addItem(it.id, 1); checkPageOpen(); }
-    }
-    migratingItems = false;
-  }
   if (document.getElementById('dlgItems').open) renderItems();
 }
+// 手に入れた（d>0）・返した（d<0）。「持っている／いない」をそのまま書く（足し引きだと ずれることがあるため）
 function addItem(id, d) {
-  ITEM_COUNTS = { ...ITEM_COUNTS, [id]: Math.max(0, (Number(ITEM_COUNTS[id]) || 0) + d) };
+  const v = d > 0 ? 1 : 0;
+  ITEM_COUNTS = { ...ITEM_COUNTS, [id]: v };
   try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: ITEM_COUNTS, page: ITEM_PAGE })); } catch (e) {}
-  if (window.Cloud && window.Cloud.addItem) window.Cloud.addItem(id, d);
+  if (window.Cloud && window.Cloud.setItem) window.Cloud.setItem(id, v);
+}
+// v3.5.1：道具を0からやり直す（1回だけ）。v3.4 の宝物から交換した道具は、もどしても返らなかったため
+function resetItems() {
+  ITEM_COUNTS = {}; ITEM_PAGE = 1;
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: {}, page: 1 })); } catch (e) {}
+  let changed = false;
+  S.tasks.forEach(x => { if (x.loot) { delete x.loot; changed = true; } });
+  if (changed) save();
+  if (window.Cloud && window.Cloud.resetItems) window.Cloud.resetItems();
+  if (document.getElementById('dlgItems').open) renderItems();
 }
 // 今のページが全部そろったら、次のページを開く（一度開いたら閉じない）。開いたら true
 function checkPageOpen() {
@@ -1445,7 +1445,8 @@ window.App = {
   get EXP() { return EXP; },
   setProfile: p => setProfile(p, true),
   get PROFILE() { return PROFILE; },
-  setItems: (c, p) => setItems(c, p, true),
+  setItems,
+  resetItems,
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;

@@ -115,6 +115,25 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, Hh);
     sprite(name, 0, Hh - H(name) * u, u);
   }
+  /* ---- v3.5.1 プロフィール用：その場で歩く2コマ（左足を上げた絵／右足を上げた絵を横に並べて描く。CSSで切り替える） ---- */
+  function liftFoot(rows, left) {
+    const n = rows.length, w = rows[0].length, out = rows.map(r => [...r]);
+    const inHalf = c => (left ? c < w / 2 : c >= w / 2);
+    for (let c = 0; c < w; c++) {
+      if (!inHalf(c)) continue;
+      out[n - 3][c] = rows[n - 2][c]; out[n - 2][c] = rows[n - 1][c]; out[n - 1][c] = '.';
+    }
+    return out.map(r => r.join(''));
+  }
+  function drawWalk(cv, name, u = 3) {
+    if (!SPR[name]) name = 'knight';
+    const d = window.devicePixelRatio || 1, W = 16 * u, Hh = 15 * u;
+    cv.width = W * 2 * d; cv.height = Hh * d; cv.style.width = W * 2 + 'px'; cv.style.height = Hh + 'px';
+    g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W * 2, Hh);
+    const pal = PAL[name], top = Hh - H(name) * u;
+    [liftFoot(SPR[name], true), liftFoot(SPR[name], false)].forEach((rows, f) =>
+      rows.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(f * W + rx * u, top + ry * u, u, u, c); })));
+  }
   /* ---- v3.5 どうぐのアイコン（12x12。冒険の道具っぽい見た目のオリジナル） ---- */
   const IC = {
     rod: ['........kkk.', '.......kyyyk', '.......kywyk', '.......kyyyk', '.......nkkk.', '......nk....', '.....nk.....', '....nk......', '...nk.......', '..nk........', '.nk.........', '.k..........'],
@@ -212,5 +231,5 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     }
   }
 
-  return { drawStage, drawField, drawHero, drawChar, drawIcon, drawGet };
+  return { drawStage, drawField, drawHero, drawChar, drawWalk, drawIcon, drawGet };
 })();

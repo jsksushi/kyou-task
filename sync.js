@@ -185,9 +185,12 @@ function listen() {
     profileChecked = true;
     saveProfile(App.PROFILE);
   }, err => App.cloudStatus('error', err)));
-  // v3.4 宝物
+  // どうぐ（v3.5.1：まだ0からやり直していなければ、サーバーの最新を確認してから1回だけリセット）
   unsubs.push(onSnapshot(itemsRef(), snap => {
-    if (snap.exists()) App.setItems(snap.data().counts || {}, snap.data().page);
+    if (!snap.exists()) return;
+    const d = snap.data();
+    if (!d.reset351) { if (!snap.metadata.fromCache) App.resetItems(); return; }
+    App.setItems(d.counts || {}, d.page);
   }, err => App.cloudStatus('error', err)));
 }
 function saveProfile(p) {
@@ -197,12 +200,17 @@ function saveProfile(p) {
 // v3.5 どうぐの何ページめまで開いたか
 function setItemPage(n) {
   if (!user) return;
-  setDoc(itemsRef(), { page: n }, { merge: true }).catch(err => App.cloudStatus('error', err));
+  setDoc(itemsRef(), { page: n, reset351: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
-// 宝物の数：2台で同時に操作しても数がずれない足し算で送る
-function addItem(id, d) {
+// どうぐ：持っている＝1／返した＝0 をそのまま書く
+function setItem(id, v) {
   if (!user) return;
-  setDoc(itemsRef(), { counts: { [id]: increment(d) } }, { merge: true }).catch(err => App.cloudStatus('error', err));
+  setDoc(itemsRef(), { counts: { [id]: v }, reset351: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
+}
+// どうぐを0からやり直す（中身ごと置き換える）
+function resetItems() {
+  if (!user) return;
+  setDoc(itemsRef(), { counts: {}, page: 1, reset351: true }).catch(err => App.cloudStatus('error', err));
 }
 // 完了したとき（+1）・もどしたとき（-1）。2台で同時に押しても数がずれない足し算で送る
 function addExp(d) {
@@ -247,7 +255,8 @@ window.Cloud = {
   push,
   addExp,
   saveProfile,
-  addItem,
+  setItem,
+  resetItems,
   setItemPage,
   login,
   logout: () => { if (confirm('ログアウトします。よろしいですか？')) signOut(auth); },
