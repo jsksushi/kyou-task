@@ -282,3 +282,37 @@ input[type=checkbox]{accent-color:var(--gold)}
 .item.dropline.below{box-shadow:0 3px 0 0 var(--gold)}
 .item.lifting{background:#22224a;border-radius:6px;box-shadow:0 0 0 2px var(--gold),0 6px 14px rgba(0,0,0,.6);position:relative;z-index:3}
 @media (max-width:700px){.item[data-id]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}}
+
+/* v3.7 きょうの よてい（ヘッダーの真ん中に置く窓。スマホはタブ） */
+.calwin{position:absolute;top:16px;left:340px;width:280px;max-height:178px;padding:16px 10px 8px;z-index:2;background:rgba(0,0,0,.88);display:flex;flex-direction:column}
+.calwin>.ttl{color:#9ad8f5;max-width:calc(100% - 120px)}
+@media (max-width:899px){.calwin{left:210px;width:240px}}
+@media (max-width:700px){.calwin{display:none}}
+.calbtn{position:absolute;top:-12px;right:10px;background:#000;color:#fff;border:2px solid #fff;border-radius:4px;font-size:11px;padding:1px 8px;cursor:pointer}
+.calbtn:hover{background:#fff;color:#000}
+.calbtn.blink{border-color:var(--gold);color:var(--gold);animation:bl 1s steps(1) infinite}
+.callist{overflow-y:auto;min-height:0;scrollbar-width:thin}
+.cev{display:flex;flex-wrap:wrap;gap:0 8px;font-size:12.5px;line-height:1.55;padding:1px 2px;cursor:pointer;border-radius:3px}
+.cev:hover{background:#22224a}
+.cev .ct{color:var(--gold);flex:0 0 3.6em;white-space:nowrap}
+.cev .cn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cev.open .cn{white-space:normal}
+.cev.allday .ct{color:var(--sub)}
+.cev.past{opacity:.45}
+.cev.now .cn{color:var(--gold)}
+.cdet{flex:0 0 100%;padding-left:calc(3.6em + 8px);font-size:11.5px;color:var(--sub)}
+.calmsg{font-size:12px;color:var(--sub);margin:4px 2px;line-height:1.6}
+.calmsg.err{color:var(--red)}
+.calcol{position:relative}
+.calcol .calbtn{top:-12px}
+.calcol .cev{font-size:15px;padding:6px 4px}
+.calcol .cdet{font-size:13px}
+.tab.caltab{color:#9ad8f5}
+
+/* v3.7 スマホ：「セーブ・アカウント」は出さず、上に小さく バージョンとログアウト */
+.mtop{display:none}
+@media (max-width:700px){
+  #btnBackup{display:none}
+  .mtop{display:flex;gap:8px;align-items:center;position:absolute;left:10px;top:52px;z-index:2;font-size:10.5px;color:#fff;background:rgba(0,0,0,.55);border-radius:4px;padding:2px 6px}
+  .mtop button{background:none;border:1px solid rgba(255,255,255,.7);border-radius:3px;color:#fff;font-size:10.5px;padding:0 6px;cursor:pointer}
+}

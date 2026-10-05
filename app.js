@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.6';
+const APP_VERSION = '3.7';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -423,16 +423,19 @@ const frameStyle = L => { const c = frameColor(L); return c ? `border-color:${es
 const mark = (name, m) => (/^\p{Extended_Pictographic}/u.test(String(name)) ? '' : m + ' ');
 function isMobile() { return window.matchMedia('(max-width: 700px)').matches; }
 let mobileTab = (() => { try { return localStorage.getItem('kyou-task-tab') || TODAY_ID; } catch (e) { return TODAY_ID; } })();
+const CAL_TAB = '__cal';   // スマホの「📅 よてい」タブ
 function renderTabs() {
   const nav = document.getElementById('tabs');
   if (!isMobile()) { nav.hidden = true; return; }
   if (mobileTab === 'memo' && !listById('memo')) mobileTab = memoLists()[0]?.id || TODAY_ID;
-  if (!listById(mobileTab)) mobileTab = TODAY_ID;
+  if (mobileTab !== CAL_TAB && !listById(mobileTab)) mobileTab = TODAY_ID;
   nav.hidden = false;
   nav.innerHTML = S.lists.map(L => {
     const n = isMemoList(L) ? S.memos.filter(m => m.listId === L.id).length
       : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
-    return `<button class="tab ${mobileTab === L.id ? 'on' : ''} ${L.id === TODAY_ID ? 'today' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
+    const tab = `<button class="tab ${mobileTab === L.id ? 'on' : ''} ${L.id === TODAY_ID ? 'today' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
+    // v3.7：「今日」のとなりに「📅 よてい」のタブ
+    return L.id === TODAY_ID ? tab + `<button class="tab caltab ${mobileTab === CAL_TAB ? 'on' : ''}" data-tab="${CAL_TAB}" style="--c:#9ad8f5">📅 よてい</button>` : tab;
   }).join('');
   const on = nav.querySelector('.tab.on');
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -474,6 +477,7 @@ function render() {
   const keep = active && active.dataset && active.dataset.add ? { id: active.dataset.add, v: active.value } : null;
   // 書きかけのメモも保持
   const memoKeep = [...board.querySelectorAll('[data-memoadd]')].filter(el => el.value).map(el => ({ id: el.dataset.memoadd, v: el.value, focus: active === el }));
+  if (mobile && mobileTab === CAL_TAB) html.unshift('<section class="col win calcol active" data-calcol></section>');
   board.innerHTML = html.join('');
   if (keep) {
     const el = board.querySelector(`[data-add="${keep.id}"]`);
@@ -485,6 +489,7 @@ function render() {
   }
   renderTabs();
   updateBadge();
+  if (mobile && mobileTab === CAL_TAB) renderCal();
 }
 const openDetails = new Set();
 
@@ -1489,6 +1494,99 @@ function bind() {
   document.getElementById('btnLogout').onclick = () => window.Cloud && window.Cloud.logout();
 }
 
+/* ---------- v3.7 きょうの よてい（Googleカレンダーを「見るだけ」で読む） ----------
+   ・許可は calendar.readonly だけ（Google側で書き込み・削除はできない）
+   ・読むのは自分のメインのカレンダー（primary）の今日の予定。断った予定・取り消された予定は出さない
+   ・Googleの許可（アクセストークン）は1時間ほどで切れる。切れたら「▶ よみこむ」を1回押してもらう（自動で小窓を開くとブラウザに止められるため）
+*/
+const CAL_CLIENT_ID = '780302572009-bkd5c194j520srvd1j99qf7rbn2vkbl2.apps.googleusercontent.com';
+const CAL_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+const CAL_TOKEN_KEY = 'kyou-task-cal-token';
+const CAL_EVERY = 15 * 60 * 1000;   // 開いている間は15分おきに読み直す
+const cal = { token: null, exp: 0, events: null, status: 'need', msg: '', at: 0, day: '', open: new Set() };
+try { const o = JSON.parse(localStorage.getItem(CAL_TOKEN_KEY) || 'null'); if (o && o.exp > Date.now()) { cal.token = o.t; cal.exp = o.exp; } } catch (e) {}
+const calTokenOk = () => cal.token && cal.exp > Date.now();
+function calExplain(m) {
+  m = String(m || '');
+  if (/accessNotConfigured|has not been used|is disabled/i.test(m)) return 'Google Calendar API が有効になっていません';
+  if (/origin_mismatch|idpiframe|redirect_uri_mismatch/i.test(m)) return 'このアドレスがGoogle側に登録されていません';
+  if (/admin_policy_enforced/i.test(m)) return '会社の管理者の設定で止められています';
+  if (/popup_closed|popup_failed|access_denied/i.test(m)) return '許可の画面が閉じられました。もう一度おしてください';
+  return '';
+}
+// 「▶ よみこむ」：許可が残っていればそのまま読む。切れていたら許可をもらい直す（2回目からは確認画面なしで一瞬で終わるはず）
+function calLoad(fromButton) {
+  if (calTokenOk()) return calFetch();
+  if (!fromButton) { cal.status = 'need'; renderCal(); return; }
+  if (!window.google || !google.accounts || !google.accounts.oauth2) { cal.status = 'error'; cal.msg = 'Googleの部品を読み込めませんでした（オフラインかも）'; renderCal(); return; }
+  cal.status = 'loading'; renderCal();
+  const email = document.getElementById('accountEmail').textContent || '';
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: CAL_CLIENT_ID, scope: CAL_SCOPE, hint: email || undefined,
+    callback: res => {
+      if (res.error || !google.accounts.oauth2.hasGrantedAllScopes(res, CAL_SCOPE)) {
+        cal.status = 'error'; cal.msg = calExplain(res.error) || '「カレンダーを見る」の許可がもらえませんでした'; renderCal(); return;
+      }
+      cal.token = res.access_token; cal.exp = Date.now() + (Number(res.expires_in) || 3600) * 1000 - 60 * 1000;
+      try { localStorage.setItem(CAL_TOKEN_KEY, JSON.stringify({ t: cal.token, exp: cal.exp })); } catch (e) {}
+      calFetch();
+    },
+    error_callback: err => { cal.status = 'error'; cal.msg = calExplain(err && err.type) || '許可の画面を開けませんでした'; renderCal(); },
+  });
+  client.requestAccessToken({ prompt: '', hint: email || undefined });
+}
+async function calFetch() {
+  cal.status = cal.events ? cal.status : 'loading'; if (!cal.events) renderCal();
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+  const q = new URLSearchParams({ timeMin: d0.toISOString(), timeMax: d1.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
+  try {
+    const r = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?' + q, { headers: { Authorization: 'Bearer ' + cal.token } });
+    if (r.status === 401) { cal.token = null; cal.exp = 0; try { localStorage.removeItem(CAL_TOKEN_KEY); } catch (e) {} cal.status = 'need'; renderCal(); return; }
+    const j = await r.json();
+    if (!r.ok) { cal.status = 'error'; cal.msg = calExplain(JSON.stringify(j)) || `読み込めませんでした（${r.status}）`; renderCal(); return; }
+    const declined = ev => (ev.attendees || []).some(a => a.self && a.responseStatus === 'declined');
+    cal.events = (j.items || []).filter(ev => ev.status !== 'cancelled' && !declined(ev)).map(ev => ({
+      id: ev.id, title: ev.summary || '（タイトルなし）', allDay: !(ev.start && ev.start.dateTime),
+      start: ev.start && ev.start.dateTime ? new Date(ev.start.dateTime).getTime() : 0,
+      end: ev.end && ev.end.dateTime ? new Date(ev.end.dateTime).getTime() : 0,
+      loc: ev.location || '',
+    }));
+    cal.status = 'ok'; cal.at = Date.now(); cal.day = todayKey();
+  } catch (e) { cal.status = 'error'; cal.msg = 'つながりませんでした（オフラインかも）'; }
+  renderCal();
+}
+const hmOf = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function calBody() {
+  const btn = `<button type="button" class="calbtn ${cal.status === 'need' ? 'blink' : ''}" data-calbtn>${cal.status === 'loading' ? 'よみこみちゅう…' : '▶ よみこむ'}</button>`;
+  let list = '';
+  if (cal.events && cal.day === todayKey()) {
+    const now = Date.now(), timed = cal.events.filter(e => !e.allDay);
+    const cur = timed.find(e => e.start <= now && now < e.end) || timed.find(e => e.start > now);
+    list = cal.events.length ? cal.events.map(e => {
+      const cls = ['cev', e.allDay ? 'allday' : '', !e.allDay && e.end <= now ? 'past' : '', e === cur ? 'now' : '', cal.open.has(e.id) ? 'open' : ''].join(' ');
+      return `<div class="${cls}" data-cev="${esc(e.id)}"><span class="ct">${e === cur ? '▶' : ''}${e.allDay ? '終日' : hmOf(e.start)}</span><span class="cn">${esc(e.title)}</span>
+        ${cal.open.has(e.id) ? `<div class="cdet">${e.allDay ? '終日' : hmOf(e.start) + '〜' + hmOf(e.end)}${e.loc ? '<br>' + esc(e.loc) : ''}</div>` : ''}</div>`;
+    }).join('') : '<p class="calmsg">きょうの よていは ない。</p>';
+  }
+  const msg = cal.status === 'error' ? `<p class="calmsg err">${esc(cal.msg)}</p>`
+    : cal.status === 'need' ? `<p class="calmsg">${cal.events ? 'きょかが きれた。▶ よみこむ を おしてね' : '▶ よみこむ を おすと きょうの よていが でる'}</p>` : '';
+  return { btn, inner: msg + list };
+}
+function renderCal() {
+  const b = calBody();
+  const win = document.getElementById('calwin');
+  if (win) { document.getElementById('calBtnBox').innerHTML = b.btn; document.getElementById('calList').innerHTML = b.inner; }
+  const col = document.querySelector('#board [data-calcol]');
+  if (col) col.innerHTML = `<span class="ttl">📅 きょうの よてい</span>${b.btn}<div class="callist">${b.inner}</div>`;
+}
+// 開いている間：15分おき・日付が変わったとき・アプリに戻ってきたときに読み直す（許可が切れていたらボタンを点滅）
+function calTick() {
+  if (!cal.events && !calTokenOk()) return;
+  if (!calTokenOk()) { if (cal.status !== 'need') { cal.status = 'need'; renderCal(); } return; }
+  if (cal.day !== todayKey() || Date.now() - cal.at > CAL_EVERY) calFetch(); else renderCal();
+}
+
 /* ---------- 起動 ---------- */
 load();
 bind();
@@ -1496,6 +1594,8 @@ render();   // まず端末内の控えで表示（クラウドの読み込み�
 renderLevel();
 let openedMsg = false;
 document.getElementById('ver').textContent = APP_VERSION;
+document.getElementById('verM').textContent = APP_VERSION;
+document.getElementById('btnLogoutM').onclick = () => window.Cloud && window.Cloud.logout();
 updateBadge();
 document.getElementById('verNew').onclick = updateApp;
 document.getElementById('msgwrap').onclick = () => {
@@ -1504,11 +1604,22 @@ document.getElementById('msgwrap').onclick = () => {
 };
 function drawArt() {
   try {
-    Art.drawStage(document.getElementById('stage'));
+    const cw = document.getElementById('calwin'), st = document.getElementById('stage');
+    const reserve = cw && cw.offsetParent ? cw.getBoundingClientRect().right - st.getBoundingClientRect().left : 0;
+    Art.drawStage(st, { reserve });
     Art.drawField(document.getElementById('field'));
     if (!document.getElementById('loginScreen').hidden) Art.drawHero(document.getElementById('loginHero'));
   } catch (e) { console.warn(e); }
 }
+// v3.7 きょうの よてい
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-calbtn]')) { calLoad(true); return; }
+  const ev = e.target.closest('[data-cev]');
+  if (ev) { const id = ev.dataset.cev; cal.open.has(id) ? cal.open.delete(id) : cal.open.add(id); renderCal(); }
+});
+setInterval(calTick, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) calTick(); });
+if (calTokenOk()) calFetch(); else renderCal();
 drawArt();
 if (document.fonts) document.fonts.ready.then(drawArt);
 let artTimer; window.addEventListener('resize', () => { clearTimeout(artTimer); artTimer = setTimeout(drawArt, 120); });

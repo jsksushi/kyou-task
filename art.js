@@ -77,24 +77,27 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
   function outlined(x, y, text, size) { g.font = `${size}px "DotGothic16","MS Gothic",monospace`; g.textBaseline = 'middle'; g.fillStyle = K; [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2]].forEach(([a, b]) => g.fillText(text, x + a, y + b)); g.fillStyle = '#fff'; g.fillText(text, x, y); }
 
   /* ---- ヘッダー：フィールド（山・城・森・パーティ） ---- */
-  function drawStage(cv) {
-    let w, h; [g, w, h] = prep(cv); const gy = h - 40, wide = w >= 900, u = 3;
+  // opt.reserve：左からこの位置（px）までは「きょうの よてい」の窓が乗るので、キャラを置かない（v3.7）
+  function drawStage(cv, opt = {}) {
+    let w, h; [g, w, h] = prep(cv); const reserve = opt.reserve || 0; const gy = h - 40, wide = w >= 900, u = 3;
     grad(0, 0, w, gy, '#3f6fd8', '#9cc8ff', 9);
     cloud(w * 0.55, 18, 1.1); cloud(w * 0.78, 46, 0.8); if (wide) cloud(w * 0.36, 60, 0.7);
     sparkle(w * 0.5, 70, 3);
     for (let x = -40; x < w; x += wide ? 170 : 140) mountain(x, gy, wide ? 220 : 180, wide ? 78 : 60, '#5b6fa8', true);
     // v3.4：右上にプロフィールの窓が乗るので、お城は窓に隠れないよう左へ寄せる
     const cx = Math.max(w * 0.40 + 200, w - 380);
-    if (wide) castle(cx, gy, 4);
-    for (let x = wide ? w * 0.42 : w * 0.55; x < (wide ? cx - 14 : w); x += 18) pine(x, gy - 30, 3);
+    if (wide && cx > reserve + 10) castle(cx, gy, 4);   // 予定の窓に重なるときは描かない
+    for (let x = wide ? Math.max(w * 0.42, reserve + 10) : w * 0.55; x < (wide ? cx - 14 : w); x += 18) pine(x, gy - 30, 3);
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 4); P(0, gy - 4, w, 5, '#5BD15B'); P(0, gy + 16, w, 8, '#c8a060'); P(0, gy + 24, w, 3, '#9a7a40');
     if (wide) {
-      const px0 = w * 0.40;
-      sprite('knight', px0, gy + 20 - H('knight') * u, u); sprite('wizard', px0 - 56, gy + 20 - H('wizard') * u, u); sprite('archer', px0 - 112, gy + 20 - H('archer') * u, u); sprite('priest', px0 - 168, gy + 20 - H('priest') * u, u);
-      sprite('blob', px0 + 110, gy + 20 - H('blob') * u, u); sprite('bat', px0 + 150, gy - 48, u);
-      g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', px0 + 52, gy - 36); g.fillText('！', px0 + 52, gy - 36);
-    } else { sprite('knight', 40, gy + 20 - H('knight') * u, u); sprite('blob', 100, gy + 20 - H('blob') * u, u); }
-    [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'));
+      // v3.7：パーティはお城の手前（右寄せ）。予定の窓と重なるキャラは描かない
+      const px0 = reserve ? cx - 20 - 192 : w * 0.40;
+      const ok = x => x >= reserve + 8;
+      [['knight', 0], ['wizard', -56], ['archer', -112], ['priest', -168], ['blob', 110]].forEach(([n, dx]) => { if (ok(px0 + dx)) sprite(n, px0 + dx, gy + 20 - H(n) * u, u); });
+      if (ok(px0 + 150)) sprite('bat', px0 + 150, gy - 48, u);
+      if (ok(px0)) { g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', px0 + 52, gy - 36); g.fillText('！', px0 + 52, gy - 36); }
+    } else { sprite('knight', 40, gy + 20 - H('knight') * u, u); if (!reserve || reserve < 90) sprite('blob', 100, gy + 20 - H('blob') * u, u); }
+    [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => { if (!reserve || x > reserve || x < 30) flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'); });
     word(26, 20, 'MY TASK', wide ? 7 : Math.max(2, Math.min(4, Math.floor((w - 220) / 42))));
   }
   /* ---- 下のフィールド帯 ---- */

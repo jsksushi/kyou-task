@@ -18,6 +18,14 @@
 
 <header class="stage-wrap">
   <canvas id="stage"></canvas>
+  <!-- v3.7 スマホだけ：上に小さく バージョンとログアウト（スマホでは「セーブ・アカウント」を出さない） -->
+  <div class="mtop"><span>ver <span id="verM"></span></span><button type="button" id="btnLogoutM">ログアウト</button></div>
+  <!-- v3.7 きょうの よてい（Googleカレンダーを見るだけ） -->
+  <section class="win calwin" id="calwin">
+    <span class="ttl">📅 きょうの よてい</span>
+    <span id="calBtnBox"></span>
+    <div class="callist" id="calList"></div>
+  </section>
   <div class="corner">
     <!-- v3.4 勇者のプロフィール（クリックで なまえ・しょくぎょうを変更） -->
     <section class="win profile" id="profile" role="button" tabindex="0">
@@ -296,6 +304,7 @@
   </form>
 </dialog>
 
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="art.js"></script>
 <script src="app.js"></script>
 <script type="module" src="sync.js"></script>
