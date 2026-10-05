@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.9';
+const APP_VERSION = '3.9.1';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -185,7 +185,7 @@ function load() {
   }
   if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
   S.tasks ||= []; S.rules ||= []; S.memos ||= [];
-  ensureMemoLists();
+  ensureMemoLists(); ensureRepeatList();
 }
 function save() {
   // 端末内にも控えを残す（すぐ起動するため＆万一の保険）
@@ -196,8 +196,26 @@ function save() {
 const listById = id => S.lists.find(l => l.id === id);
 const MEMO_ID = 'memo';                                      // 最初からあるメモ列のID
 const isMemoList = l => !!l && l.type === 'memo';
-const taskLists = () => S.lists.filter(l => !isMemoList(l));
+// v3.9.1 繰り返し系：繰り返しの設定（親🔁）は、この専用のリストでだけ作れる。ほかのリストの親もここへまとめる
+const REPEAT_ID = 'repeat';
+const isRepeatList = l => !!l && l.type === 'repeat';
+const repeatList = () => S.lists.find(isRepeatList);
+const taskLists = () => S.lists.filter(l => !isMemoList(l) && !isRepeatList(l));   // ふつうのタスクを置けるリスト
 const memoLists = () => S.lists.filter(isMemoList);
+// 繰り返し系リストの用意（何度呼んでも同じ結果）。名前に「繰り返し」が入ったリストがあればそれを専用にする。なければ作る
+function ensureRepeatList() {
+  let R = repeatList();
+  if (!R) {
+    R = S.lists.find(l => !isMemoList(l) && l.id !== TODAY_ID && /繰り返し|くりかえし|繰返/.test(String(l.name)));
+    if (R) R.type = 'repeat';
+    else { R = { id: REPEAT_ID, name: '🔁 繰り返し系', color: '#fde2ea', type: 'repeat' }; S.lists.push(R); }
+  }
+  S.rules.forEach(r => { if (r.listId !== R.id) r.listId = R.id; });   // ほかのリストにあった親はお引っ越し
+  S.tasks.forEach(x => {
+    if (x.listId === R.id) { x.listId = TODAY_ID; delete x.origListId; }   // ふつうのタスクは置けないので「今日」へ
+    if (x.origListId === R.id) delete x.origListId;
+  });
+}
 // メモ列の用意：古いデータ（メモ列がリストになっていない）をメモ用リストに移す。何度呼んでも同じ結果
 function ensureMemoLists() {
   let changed = false;
@@ -247,7 +265,7 @@ function generateRepeats() {
       if (ruleMatches(r, k) && !taskById(gid) && !S.tasks.some(x => x.ruleId === r.id && x.due === k)) {
         genIds.add(gid);
         S.tasks.push({
-          id: gid, title: r.title, listId: TODAY_ID, origListId: r.listId !== TODAY_ID ? r.listId : undefined, due: k, time: r.time || '',
+          id: gid, title: r.title, listId: TODAY_ID, origListId: r.listId !== TODAY_ID && !isRepeatList(listById(r.listId)) ? r.listId : undefined, due: k, time: r.time || '',
           memo: r.memo || '', ruleId: r.id, clone: true, done: false, createdAt: Date.now(), order: newOrder(),
         });
       }
@@ -358,6 +376,7 @@ function ensureOrder() {
 // リストの中の位置へ動かす（beforeId の直前。null なら一番下）
 function placeTask(id, listId, beforeId) {
   const x = taskById(id); if (!x) return;
+  if (isRepeatList(listById(listId))) { render(); showMsg('「繰り返し系」には ふつうの タスクは おけない。'); return; }
   if (x.listId !== listId) {
     x.listId = listId;
     delete x.origListId;
@@ -443,7 +462,8 @@ function renderTabs() {
   nav.hidden = false;
   nav.innerHTML = S.lists.map(L => {
     const n = isMemoList(L) ? S.memos.filter(m => m.listId === L.id).length
-      : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
+      : L.id === TODAY_ID ? S.tasks.filter(x => isCounted(x)).length
+      : isRepeatList(L) ? S.rules.filter(r => r.listId === L.id).length : S.tasks.filter(x => x.listId === L.id && !x.done).length;
     const tab = `<button class="tab ${mobileTab === L.id ? 'on' : ''} ${L.id === TODAY_ID ? 'today' : ''}" data-tab="${L.id}" style="--c:${esc(lightColor(L.color))}">${esc(L.name)}<span class="tn">${n}</span></button>`;
     // v3.7：「今日」のとなりに「📅 よてい」のタブ
     return L.id === TODAY_ID ? tab + `<button class="tab caltab ${mobileTab === CAL_TAB ? 'on' : ''}" data-tab="${CAL_TAB}" style="--c:#9ad8f5">📅 よてい</button>` : tab;
@@ -469,15 +489,15 @@ function render() {
       continue;
     }
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(byOrder);
-    const parents = S.rules.filter(r => r.listId === L.id);
+    const parents = S.rules.filter(r => r.listId === L.id), repL = isRepeatList(L);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}" style="${frameStyle(L)}">
-      <span class="ttl" ${mobile ? '' : `draggable="true" data-wdrag="${L.id}" title="つかんで ドラッグすると 窓の順番を かえられます"`} style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
+      <span class="ttl" ${mobile ? '' : `draggable="true" data-wdrag="${L.id}" title="つかんで ドラッグすると 窓の順番を かえられます"`} style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${repL ? parents.length : open.length}</span></span>
       ${parents.map(parentRow).join('')}
-      ${open.map(taskRow).join('') || (parents.length ? '' : '<div class="empty">タスクは ない。</div>')}
+      ${open.map(taskRow).join('') || (parents.length ? '' : `<div class="empty">${repL ? 'くりかえしは ない。' : 'タスクは ない。'}</div>`)}
       <div class="addrow">
-        <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを ついか' : '＋ タスクを ついか（Enter）'}">
+        <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${repL ? (mobile ? '＋ くりかえしを ついか' : '＋ くりかえしを ついか（Enter）') : mobile ? '＋ タスクを ついか' : '＋ タスクを ついか（Enter）'}">
         <button class="more" data-addmore="${L.id}" title="日時やメモを付けて追加">詳しく</button>
       </div>
       ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>完了ずみ ${doneToday.length}</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
@@ -785,6 +805,7 @@ async function updateApp() {
 }
 function quickAdd(listId, title) {
   title = title.trim(); if (!title) return;
+  if (isRepeatList(listById(listId))) return openTaskDialog('new', null, listId, title);   // v3.9.1 繰り返しは設定画面で作る
   const x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now(), order: newOrder() };
   S.tasks.push(x);
   save(); render();
@@ -796,9 +817,12 @@ const dlgTask = document.getElementById('dlgTask');
 let editing = null; // {mode:'task'|'new'|'rule', id, listId}
 let fDueVal = '', fTimeVal = '';
 
-function fillListSelect(sel, value) {
-  sel.innerHTML = taskLists().map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
-  sel.value = value;
+function fillListSelect(sel, value, repeatOnly) {
+  const ls = repeatOnly ? [repeatList()] : taskLists();
+  sel.innerHTML = ls.map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
+  sel.value = repeatOnly ? ls[0].id : value;
+  if (!sel.value && ls.length) sel.value = TODAY_ID;
+  sel.disabled = !!repeatOnly;   // 繰り返しの親は「繰り返し系」から動かさない
 }
 function setDue(v) {
   fDueVal = v;
@@ -845,7 +869,7 @@ function repeatChanged() {
   document.getElementById('rowDom').hidden = v !== 'monthly';
   const hint = document.getElementById('repeatHint');
   if (editing && editing.mode === 'rule') hint.textContent = '「なし」にして保存すると、この繰り返し（親）を削除します。今日に出ている分はそのまま残ります。';
-  else if (v) hint.textContent = '親（🔁）はこのリストに残り、設定した日になると その日の分が「🔥 今日」に出てきます。完了しても繰り返しは続きます。やり残した回は赤字で残ります。';
+  else if (v) hint.textContent = '親（🔁）は「繰り返し系」に残り、設定した日になると その日の分が「🔥 今日」に出てきます。完了しても繰り返しは続きます。やり残した回は赤字で残ります。';
   else hint.textContent = '';
 }
 function readRepeat() {
@@ -861,7 +885,10 @@ function openTaskDialog(mode, id, listId, presetTitle) {
   editing = { mode, id, listId };
   const titleEl = document.getElementById('taskDlgTitle');
   document.getElementById('btnTaskDelete').hidden = mode === 'new';
-  document.getElementById('rowRepeat').hidden = false;
+  // v3.9.1 くりかえしの欄は「繰り返し系」で作るとき・親を直すときだけ出す
+  const inRepeat = mode === 'rule' || (mode === 'new' && isRepeatList(listById(listId)));
+  document.getElementById('rowRepeat').hidden = !inRepeat;
+  document.querySelector('#fRepeat option[value=""]').hidden = mode === 'new';   // 新しく作るときは「なし」を選べない
   document.getElementById('cloneNote').hidden = true;
   if (mode === 'task') {
     const x = taskById(id);
@@ -871,6 +898,7 @@ function openTaskDialog(mode, id, listId, presetTitle) {
     fillListSelect(document.getElementById('fList'), x.listId);
     setDue(x.due || ''); setTime(x.time || '');
     setRepeatUI('', [], null);
+    document.getElementById('rowRepeat').hidden = true;
     if (r) {
       // 分身：繰り返しの設定は親で変える
       document.getElementById('rowRepeat').hidden = true;
@@ -884,16 +912,17 @@ function openTaskDialog(mode, id, listId, presetTitle) {
     const r = ruleById(id);
     titleEl.textContent = '繰り返しの設定（親）を編集';
     document.getElementById('fTitle').value = r.title;
-    fillListSelect(document.getElementById('fList'), r.listId);
+    fillListSelect(document.getElementById('fList'), r.listId, true);
     setDue(r.start || ''); setTime(r.time || '');
     setRepeatUI(r.type, r.days, r.dom, r);
     document.getElementById('fMemo').value = r.memo || '';
   } else {
-    titleEl.textContent = 'タスクを追加';
+    titleEl.textContent = inRepeat ? 'くりかえしを追加' : 'タスクを追加';
     document.getElementById('fTitle').value = presetTitle || '';
-    fillListSelect(document.getElementById('fList'), listId);
+    fillListSelect(document.getElementById('fList'), listId, inRepeat);
     setDue(''); setTime('');
-    setRepeatUI('', [], null);
+    if (inRepeat) setRepeatUI('weekly', [new Date().getDay()], null);   // 最初は「毎週（今日の曜日）」
+    else setRepeatUI('', [], null);
     document.getElementById('fMemo').value = '';
   }
   repeatChanged();
@@ -901,7 +930,8 @@ function openTaskDialog(mode, id, listId, presetTitle) {
   document.getElementById('fTitle').focus();
 }
 // 編集中のものが「繰り返しの親（設定）」になりうるか（分身の編集では繰り返しは触らない）
-const editingIsParent = () => editing && (editing.mode !== 'task' || !(taskById(editing.id) || {}).ruleId);
+// v3.9.1：繰り返しを触れるのは「繰り返し系」で新しく作るときと、親を直すときだけ
+const editingIsParent = () => editing && (editing.mode === 'rule' || (editing.mode === 'new' && isRepeatList(listById(editing.listId))));
 
 function saveTaskDialog() {
   const title = document.getElementById('fTitle').value.trim();
@@ -910,6 +940,7 @@ function saveTaskDialog() {
   const time = fTimeVal;
   const memo = document.getElementById('fMemo').value;
   const rep = editingIsParent() ? readRepeat() : null;
+  if (editingIsParent() && editing.mode === 'new' && !rep) { alert('くりかえしの 設定を えらんでください'); return false; }
   if (rep && rep.type === 'weekly' && rep.days.length === 0) { alert('毎週の曜日を1つ以上選んでください'); return false; }
   const t = todayKey();
   const start = fDueVal || (rep && rep.type === 'custom' ? rep.start : '') || '';
@@ -934,7 +965,7 @@ function saveTaskDialog() {
   const x0 = editing.mode === 'task' ? taskById(editing.id) : null;
   // 新しく繰り返しを作る（新規、または普通のタスクに繰り返しを付けた）→ 親を作る。分身は対象の日に🔥今日へ出る
   if (rep) {
-    const home = listId === TODAY_ID && x0 && x0.origListId && listById(x0.origListId) ? x0.origListId : listId;
+    const home = repeatList().id;   // v3.9.1 親はいつも「繰り返し系」
     const r = { id: uid(), title, listId: home, time, memo, ...rep, start: start || t, lastGenerated: addDays(t, -1) };
     S.rules.push(r);
     if (x0) S.tasks = S.tasks.filter(z => z.id !== x0.id);   // 元のタスクは親になる
@@ -958,7 +989,7 @@ function saveTaskDialog() {
   if (x.due !== prevDue) delete x.pinnedOut;
   if (listId !== prevList) x.pinnedOut = listId !== TODAY_ID && !!x.due && x.due <= t;
   // 「今日」に自動移動されていたタスクの期限を先に延ばしたら、元のリストへ戻す
-  if (x.listId === TODAY_ID && x.origListId && x.due && x.due > t && listById(x.origListId)) {
+  if (x.listId === TODAY_ID && x.origListId && x.due && x.due > t && listById(x.origListId) && !isRepeatList(listById(x.origListId))) {
     x.listId = x.origListId; delete x.origListId; x.order = newOrder();
   }
   generateRepeats();
@@ -1038,13 +1069,13 @@ function renderListRows() {
       : S.tasks.filter(x => x.listId === l.id || x.origListId === l.id).length + S.rules.filter(r => r.listId === l.id).length;
     const others = (memo ? memoLists() : taskLists()).filter(o => o.id !== l.id);
     return `<div class="lrow" data-lid="${l.id}">
-      <span class="ltype ${memo ? 'm' : ''}">${memo ? 'メモ' : 'タスク'}</span>
+      <span class="ltype ${memo ? 'm' : isRepeatList(l) ? 'r' : ''}">${memo ? 'メモ' : isRepeatList(l) ? 'くりかえし' : 'タスク'}</span>
       <input type="text" value="${esc(l.name)}" data-lname="${l.id}">
       <div class="swatches">${PALETTE.map(c => `<button class="sw ${c === l.color ? 'on' : ''}" style="background:${c}" data-lcolor="${l.id}" data-c="${c}" title="${c}"></button>`).join('')}</div>
       ${l.id === TODAY_ID ? '<span class="frames hint">わくの色：金色（固定）</span>' : `<div class="frames"><span class="hint">わくの色</span>${FRAMES.map(f => `<button class="fr ${(l.frame || '') === f.c ? 'on' : ''} ${f.c ? '' : 'auto'}" style="${f.c ? 'border-color:' + f.c : ''}" data-lframe="${l.id}" data-f="${f.c}" title="${f.n}${f.c ? '' : '（繰り返しのあるリスト＝うすピンク、メモ＝みずいろ）'}">${f.c ? '' : '自'}</button>`).join('')}</div>`}
       <button class="btn small" data-lup="${l.id}" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="btn small" data-ldown="${l.id}" ${i === S.lists.length - 1 ? 'disabled' : ''}>↓</button>
-      <button class="btn small danger" data-ldel="${l.id}" ${l.id === TODAY_ID ? 'disabled title="「今日」は削除できません"' : ''}>削除</button>
+      <button class="btn small danger" data-ldel="${l.id}" ${l.id === TODAY_ID ? 'disabled title="「今日」は削除できません"' : isRepeatList(l) ? 'disabled title="「繰り返し系」は削除できません（繰り返しの設定はここにまとまっています）"' : ''}>削除</button>
       ${deletingList === l.id ? `<div class="delbox">
         ${!cnt ? (memo ? '中にメモはありません。' : '中にタスクはありません。')
           : memo && !others.length ? `中のメモ（${cnt}件）も一緒に削除されます。`
@@ -1233,7 +1264,7 @@ function importJSON(file) {
       if (!Array.isArray(data.lists) || !Array.isArray(data.tasks)) throw new Error('きょうのタスクのバックアップ形式ではありません');
       if (!confirm(`読み込みます。今のデータは置き換わります（クラウドのデータも置き換わります）。\nリスト ${data.lists.length}件／タスク ${data.tasks.length}件／メモ ${(data.memos || []).length}件\n\n置き換える前に、今のデータを「読み込み前」として自動でバックアップします。`)) return;
       await saveBackup(`kyou-task-backup_読み込み前_${stamp()}.json`, { ask: true });   // まちがえたら、このファイルを読み込めば戻せる
-      S = migrate(data, fr.result); S.rules ||= []; S.memos ||= []; ensureMemoLists();
+      S = migrate(data, fr.result); S.rules ||= []; S.memos ||= []; ensureMemoLists(); ensureRepeatList();
       if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
       dailyRefresh(); render();
       document.getElementById('dlgBackup').close();
@@ -1872,6 +1903,7 @@ window.App = {
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
+    ensureRepeatList(); // v3.9.1 繰り返しの親は「繰り返し系」にまとめる
     // v3.4：メモのリスト名の先頭「✍」を「✏️」に（分かりやすくするため。1回だけ）
     try {
       if (!localStorage.getItem('kyou-task-pencil')) {

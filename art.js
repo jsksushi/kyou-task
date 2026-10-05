@@ -73,7 +73,8 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'], S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'], T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
     Y: ['10001', '10001', '01010', '00100', '00100', '00100', '00100'], "'": ['00100', '00100', '01000', '00000', '00000', '00000', '00000'], ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
   };
-  function word(x, y, text, s) { [...text].forEach((ch, i) => { const gl = F[ch] || F[' '], gx = x + i * 6 * s; gl.forEach((row, ry) => [...row].forEach((b, rx) => { if (b === '1') { const px = gx + rx * s, py = y + ry * s; P(px + s, py + s, s, s, K); P(px, py, s, s, ry < 3 ? '#FFE680' : '#FCD000'); } })); }); }
+  // v3.9.1：空白は半分の幅にする（「MY TASK」の間が全角スペースのように広く見えていたため）
+  function word(x, y, text, s) { let gx = x - 6 * s, adv = 6 * s; [...text].forEach(ch => { gx += adv; adv = ch === ' ' ? 3 * s : 6 * s; const gl = F[ch] || F[' ']; gl.forEach((row, ry) => [...row].forEach((b, rx) => { if (b === '1') { const px = gx + rx * s, py = y + ry * s; P(px + s, py + s, s, s, K); P(px, py, s, s, ry < 3 ? '#FFE680' : '#FCD000'); } })); }); }
   function outlined(x, y, text, size) { g.font = `${size}px "DotGothic16","MS Gothic",monospace`; g.textBaseline = 'middle'; g.fillStyle = K; [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, 2], [-2, 2], [2, -2]].forEach(([a, b]) => g.fillText(text, x + a, y + b)); g.fillStyle = '#fff'; g.fillText(text, x, y); }
 
   /* ---- ヘッダー：フィールド（山・城・森・パーティ） ---- */
