@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カレンダー読み込みテスト</title>
+<!-- きょうのタスク：Googleカレンダーを「見るだけ」で読めるかの確認用ページ（アプリ本体とは別。確認が終わったら消してOK） -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  body{margin:0;background:#12123a;color:#fff;font-family:"MS Gothic",monospace;font-size:15px;line-height:1.7}
+  .box{max-width:640px;margin:24px auto;padding:18px 20px;background:#000;border:3px solid #fff;border-radius:8px}
+  h1{font-size:18px;font-weight:400;color:#FCD000;margin:0 0 10px}
+  p,li{font-size:13px;color:#d0d0ee}
+  input{width:100%;box-sizing:border-box;background:#000;color:#fff;border:2px solid #8888b8;border-radius:4px;padding:7px 9px;font:inherit;font-size:13px}
+  button{margin-top:10px;background:#fff;color:#000;border:2px solid #fff;border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
+  button:disabled{opacity:.4}
+  #out{margin-top:14px;white-space:pre-wrap}
+  .ev{display:flex;gap:12px;padding:4px 0;border-bottom:1px dashed #44446a}
+  .ev .t{color:#FCD000;min-width:3.2em}
+  .err{color:#ff6b6b}.ok{color:#4ade80}.dim{color:#8888b8}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>カレンダー読み込みテスト（見るだけ）</h1>
+  <p>Googleカレンダーの「今日の予定」を読めるか確認するページです。<br>
+  使う許可は calendar.readonly（見るだけ）だけなので、予定を追加・変更・削除することはできません。</p>
+  <p>① OAuth クライアントID を貼り付ける（Google Cloud の「認証情報」にある Web クライアントのID。…apps.googleusercontent.com で終わるもの）</p>
+  <input id="cid" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off">
+  <button id="go">② 会社のGoogleアカウントで許可して、今日の予定を読む</button>
+  <div id="out"></div>
+</div>
+<script>
+'use strict';
+const SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';   // 見るだけの許可
+const $ = id => document.getElementById(id);
+const out = (html) => { $('out').innerHTML = html; };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+try { $('cid').value = localStorage.getItem('kyou-task-cal-test-cid') || ''; } catch (e) {}
+
+// よくあるエラーを、何をすればいいかの説明に置き換える
+function explain(msg) {
+  const m = String(msg || '');
+  if (/accessNotConfigured|has not been used|is disabled/i.test(m)) return 'Google Calendar API が「有効」になっていません。Google Cloud の「ライブラリ」で有効にしてください。';
+  if (/origin_mismatch|idpiframe|redirect_uri_mismatch|not a valid origin/i.test(m)) return 'このページのアドレス（https://jsksushi.github.io）が、クライアントIDの「承認済みの JavaScript 生成元」に入っていません。';
+  if (/admin_policy_enforced/i.test(m)) return '会社の Google Workspace 管理者の設定で、このアプリにカレンダーを見せることが止められています（管理者への相談が必要）。';
+  if (/access_denied/i.test(m)) return '許可の画面で「許可しない」になったか、テストユーザーに入っていない可能性があります。';
+  if (/org_internal/i.test(m)) return 'このアプリは「社内用」設定なので、会社のアカウント以外ではログインできません（会社のアカウントを選んでください）。';
+  if (/invalid_client/i.test(m)) return 'クライアントIDが間違っているようです。もう一度コピーしてください。';
+  return '';
+}
+
+$('go').onclick = () => {
+  const cid = $('cid').value.trim();
+  if (!cid.endsWith('.apps.googleusercontent.com')) { out('<span class="err">クライアントIDを貼り付けてください（…apps.googleusercontent.com で終わるもの）</span>'); return; }
+  try { localStorage.setItem('kyou-task-cal-test-cid', cid); } catch (e) {}
+  if (!window.google || !google.accounts || !google.accounts.oauth2) { out('<span class="err">Googleのログイン部品を読み込めませんでした。ページを再読み込みしてください。</span>'); return; }
+  out('<span class="dim">許可の画面を開いています…</span>');
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: SCOPE,
+    callback: async res => {
+      if (res.error) { out(`<span class="err">許可がもらえませんでした：${esc(res.error)}</span>\n${esc(explain(res.error + ' ' + (res.error_description || '')))}`); return; }
+      if (!google.accounts.oauth2.hasGrantedAllScopes(res, SCOPE)) { out('<span class="err">「カレンダーを見る」許可にチェックが入っていませんでした。もう一度試して、チェックを入れてください。</span>'); return; }
+      await readToday(res.access_token);
+    },
+    error_callback: err => { out(`<span class="err">許可の画面でエラー：${esc(err && (err.type || err.message))}</span>\n${esc(explain(err && (err.type + ' ' + err.message)))}`); },
+  });
+  client.requestAccessToken();
+};
+
+async function readToday(token) {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+  const q = new URLSearchParams({ timeMin: d0.toISOString(), timeMax: d1.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '50' });
+  out('<span class="dim">今日の予定を読んでいます…</span>');
+  try {
+    const r = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?' + q, { headers: { Authorization: 'Bearer ' + token } });
+    const j = await r.json();
+    if (!r.ok) { const msg = (j.error && j.error.message) || r.status; out(`<span class="err">読み込みに失敗しました（${esc(r.status)}）：${esc(msg)}</span>\n${esc(explain(JSON.stringify(j)))}`); return; }
+    const items = (j.items || []).filter(ev => ev.status !== 'cancelled');
+    const declined = ev => (ev.attendees || []).some(a => a.self && a.responseStatus === 'declined');
+    const shown = items.filter(ev => !declined(ev));
+    const hm = s => { const t = new Date(s); return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`; };
+    const rows = shown.map(ev => `<div class="ev"><span class="t">${ev.start && ev.start.dateTime ? hm(ev.start.dateTime) : '終日'}</span><span>${esc(ev.summary || '（タイトルなし）')}</span></div>`).join('');
+    out(`<span class="ok">成功！ 今日の予定を ${shown.length} 件 読めました（断った予定 ${items.length - shown.length} 件は のぞいています）。</span>${rows}`);
+  } catch (e) {
+    out(`<span class="err">読み込みに失敗しました：${esc(e.message)}</span>`);
+  }
+}
+</script>
+</body>
+</html>
