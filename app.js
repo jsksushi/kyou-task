@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.5.3';
+const APP_VERSION = '3.6';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -248,7 +248,7 @@ function generateRepeats() {
         genIds.add(gid);
         S.tasks.push({
           id: gid, title: r.title, listId: TODAY_ID, origListId: r.listId !== TODAY_ID ? r.listId : undefined, due: k, time: r.time || '',
-          memo: r.memo || '', ruleId: r.id, clone: true, done: false, createdAt: Date.now(),
+          memo: r.memo || '', ruleId: r.id, clone: true, done: false, createdAt: Date.now(), order: newOrder(),
         });
       }
       r.lastGenerated = k;
@@ -268,11 +268,13 @@ function autoMoveToToday() {
     if (x.done || !x.due || x.due > t || x.listId === TODAY_ID || x.pinnedOut) continue;
     x.origListId = x.listId;
     x.listId = TODAY_ID;
+    x.order = newOrder();   // 自動で「今日」に来たものは一番下
   }
 }
 function dailyRefresh() {
   generateRepeats();
   autoMoveToToday();
+  ensureOrder();
   S.lastDate = todayKey();
   save();
 }
@@ -323,6 +325,43 @@ function sortTasks(a, b) {
   return ka < kb ? -1 : ka > kb ? 1 : (a.createdAt || 0) - (b.createdAt || 0);
 }
 
+/* v3.6 手で並べた順（task.order：小さいほど上）。期限・時刻は並び順には使わず、裏の仕組み（今日への移動・赤字・件数）だけに使う */
+const newOrder = () => Date.now() + Math.random();          // 新しく入ってきたものは一番下
+const byOrder = (a, b) => {
+  const oa = a.order ?? Infinity, ob = b.order ?? Infinity;
+  return oa === ob ? sortTasks(a, b) : oa < ob ? -1 : 1;
+};
+// 並び順がまだ無いタスクに付ける（v3.5 までのデータは、今までの並び＝期限順のまま始める）
+function ensureOrder() {
+  let changed = false;
+  for (const L of S.lists) {
+    const open = S.tasks.filter(x => x.listId === L.id && !x.done);
+    const none = open.filter(x => typeof x.order !== 'number').sort(sortTasks);
+    if (!none.length) continue;
+    const hasAny = open.length > none.length;
+    none.forEach((x, i) => { x.order = hasAny ? newOrder() + i : i; });
+    changed = true;
+  }
+  return changed;
+}
+// リストの中の位置へ動かす（beforeId の直前。null なら一番下）
+function placeTask(id, listId, beforeId) {
+  const x = taskById(id); if (!x) return;
+  if (x.listId !== listId) {
+    x.listId = listId;
+    delete x.origListId;
+    // 期限が今日以前のタスクを手で「今日」以外へ動かしたら、自動で戻さない
+    x.pinnedOut = listId !== TODAY_ID && !!x.due && x.due <= todayKey();
+  }
+  ensureOrder();
+  const rest = S.tasks.filter(z => z.listId === listId && !z.done && z.id !== id).sort(byOrder);
+  const i = beforeId ? rest.findIndex(z => z.id === beforeId) : -1;
+  if (i < 0) x.order = rest.length ? rest[rest.length - 1].order + 1 : 0;
+  else if (i === 0) x.order = rest[0].order - 1;
+  else x.order = (rest[i - 1].order + rest[i].order) / 2;
+  save(); render();
+}
+
 function taskRow(x) {
   const t = todayKey();
   const cls = ['item'];
@@ -338,7 +377,7 @@ function taskRow(x) {
   const btn = x.done
     ? `<button class="donebtn" data-undo="${x.id}" title="未完了に戻す">もどす</button>`
     : `<button class="donebtn" data-done="${x.id}" title="完了にする">完了</button>`;
-  return `<div class="${cls.join(' ')}" data-id="${x.id}" draggable="${!x.done}">
+  return `<div class="${cls.join(' ')}" data-id="${x.id}" draggable="${!x.done && !isMobile()}">
     <div class="body">
       <div class="title" data-edit="${x.id}">${esc(x.title)}</div>
       ${meta.length ? `<div class="meta">${meta.join('')}</div>` : ''}
@@ -415,7 +454,7 @@ function render() {
       </section>`);
       continue;
     }
-    const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
+    const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(byOrder);
     const parents = S.rules.filter(r => r.listId === L.id);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
@@ -729,18 +768,11 @@ async function updateApp() {
 }
 function quickAdd(listId, title) {
   title = title.trim(); if (!title) return;
-  const x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now() };
+  const x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now(), order: newOrder() };
   S.tasks.push(x);
   save(); render();
 }
-function moveTask(id, listId) {
-  const x = taskById(id); if (!x || x.listId === listId) return;
-  x.listId = listId;
-  delete x.origListId;
-  // 期限が今日以前のタスクを手で「今日」以外へ動かしたら、自動で戻さない
-  x.pinnedOut = listId !== TODAY_ID && !!x.due && x.due <= todayKey();
-  save(); render();
-}
+
 
 /* ---------- タスク編集ダイアログ ---------- */
 const dlgTask = document.getElementById('dlgTask');
@@ -898,19 +930,19 @@ function saveTaskDialog() {
 
   let x;
   if (editing.mode === 'new') {
-    x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now() };
+    x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now(), order: newOrder() };
     S.tasks.push(x);
   } else {
     x = x0;
   }
   const prevList = x.listId, prevDue = x.due;
   x.title = title; x.time = time; x.memo = memo; x.due = fDueVal;
-  if (listId !== prevList) { x.listId = listId; delete x.origListId; }
+  if (listId !== prevList) { x.listId = listId; delete x.origListId; x.order = newOrder(); }
   if (x.due !== prevDue) delete x.pinnedOut;
   if (listId !== prevList) x.pinnedOut = listId !== TODAY_ID && !!x.due && x.due <= t;
   // 「今日」に自動移動されていたタスクの期限を先に延ばしたら、元のリストへ戻す
   if (x.listId === TODAY_ID && x.origListId && x.due && x.due > t && listById(x.origListId)) {
-    x.listId = x.origListId; delete x.origListId;
+    x.listId = x.origListId; delete x.origListId; x.order = newOrder();
   }
   generateRepeats();
   autoMoveToToday();
@@ -1102,10 +1134,12 @@ function importJSON(file) {
 }
 
 /* ---------- イベント ---------- */
+let suppressClick = 0;
 function bind() {
   const board = document.getElementById('board');
 
   board.addEventListener('click', e => {
+    if (Date.now() - suppressClick < 600) return;   // 長押しで並べ替えた直後のタップは無視
     const el = e.target;
     if (el.closest('a')) return; // リンクはそのまま開く
     if (el.dataset.memosave) {
@@ -1167,23 +1201,78 @@ function bind() {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', dragId);
   });
+  const clearDrop = () => board.querySelectorAll('.dropline').forEach(n => n.classList.remove('dropline', 'below'));
   board.addEventListener('dragend', () => {
     dragId = null;
     board.querySelectorAll('.dragging,.dragover').forEach(n => n.classList.remove('dragging', 'dragover'));
+    clearDrop();
   });
+  // v3.6：落とす位置（どのタスクの前か）を、マウスの高さから決める。線で位置を見せる
+  const dropTarget = (col, y) => {
+    const items = [...col.querySelectorAll(':scope > .item[data-id]')].filter(n => n.dataset.id !== dragId);
+    for (const n of items) { const r = n.getBoundingClientRect(); if (y < r.top + r.height / 2) return { before: n.dataset.id, el: n, below: false }; }
+    const last = items[items.length - 1];
+    return { before: null, el: last, below: true };
+  };
   board.addEventListener('dragover', e => {
     const col = e.target.closest('[data-list]');
     if (!col || !dragId) return;
     e.preventDefault();
     board.querySelectorAll('.dragover').forEach(n => n !== col && n.classList.remove('dragover'));
     col.classList.add('dragover');
+    clearDrop();
+    const d = dropTarget(col, e.clientY);
+    if (d.el) { d.el.classList.add('dropline'); if (d.below) d.el.classList.add('below'); }
   });
   board.addEventListener('drop', e => {
     const col = e.target.closest('[data-list]');
     if (!col || !dragId) return;
     e.preventDefault();
-    moveTask(dragId, col.dataset.list);
+    const d = dropTarget(col, e.clientY);
+    clearDrop();
+    placeTask(dragId, col.dataset.list, d.before);
   });
+
+  // v3.6 スマホ：長押しでつかんで上下に動かす（ふつうに触るとスクロール）
+  let lp = null;   // { id, el, col, timer, y0, x0, lifted }
+  const lpCancel = () => { if (lp) { clearTimeout(lp.timer); if (lp.el) { lp.el.classList.remove('lifting'); lp.el.style.transform = ''; } } clearDrop(); lp = null; };
+  board.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const it = e.target.closest('.item[data-id]');
+    if (!it || it.classList.contains('done') || e.target.closest('button,a,input,textarea')) return;
+    const col = it.closest('[data-list]'); if (!col) return;
+    const t = e.touches[0];
+    lp = { id: it.dataset.id, el: it, col, x0: t.clientX, y0: t.clientY, lifted: false };
+    lp.timer = setTimeout(() => {
+      if (!lp) return;
+      lp.lifted = true; it.classList.add('lifting');
+      try { navigator.vibrate && navigator.vibrate(12); } catch (_) {}
+    }, 450);
+  }, { passive: true });
+  board.addEventListener('touchmove', e => {
+    if (!lp) return;
+    const t = e.touches[0];
+    if (!lp.lifted) {
+      if (Math.abs(t.clientY - lp.y0) > 8 || Math.abs(t.clientX - lp.x0) > 8) lpCancel();   // 長押しの前に動いた＝スクロール
+      return;
+    }
+    e.preventDefault();   // つかんでいる間は画面を動かさない
+    lp.el.style.transform = `translateY(${t.clientY - lp.y0}px)`;
+    dragId = lp.id;
+    clearDrop();
+    const d = dropTarget(lp.col, t.clientY);
+    if (d.el) { d.el.classList.add('dropline'); if (d.below) d.el.classList.add('below'); }
+    lp.target = d.before; lp.moved = true;
+  }, { passive: false });
+  const lpEnd = e => {
+    if (!lp) return;
+    const done = lp.lifted && lp.moved, id = lp.id, list = lp.col.dataset.list, before = lp.target;
+    if (lp.lifted) { e.preventDefault(); suppressClick = Date.now(); }
+    lpCancel(); dragId = null;
+    if (done) placeTask(id, list, before);
+  };
+  board.addEventListener('touchend', lpEnd, { passive: false });
+  board.addEventListener('touchcancel', () => { lpCancel(); dragId = null; });
 
   // タスクダイアログ
   // 新しく作るカスタム繰り返しは「開始日」欄とカスタムの開始日をそろえる
