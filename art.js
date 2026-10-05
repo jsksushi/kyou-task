@@ -67,7 +67,7 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
 
   /* ---- ドット文字（5x7） ---- */
   const F = {
-    A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'], D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'], K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'],
+    A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'], D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'], K: ['10001', '10010', '10100', '11000', '10100', '10010', '10001'], M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
     O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'], S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'], T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
     Y: ['10001', '10001', '01010', '00100', '00100', '00100', '00100'], "'": ['00100', '00100', '01000', '00000', '00000', '00000', '00000'], ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
   };
@@ -81,18 +81,19 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     cloud(w * 0.55, 18, 1.1); cloud(w * 0.78, 46, 0.8); if (wide) cloud(w * 0.36, 60, 0.7);
     sparkle(w * 0.5, 70, 3);
     for (let x = -40; x < w; x += wide ? 170 : 140) mountain(x, gy, wide ? 220 : 180, wide ? 78 : 60, '#5b6fa8', true);
-    if (wide) castle(w - 170, gy, 4);
-    for (let x = wide ? w * 0.42 : w * 0.55; x < (wide ? w - 190 : w); x += 18) pine(x, gy - 30, 3);
+    // v3.4：右上にプロフィールの窓が乗るので、お城は窓に隠れないよう左へ寄せる
+    const cx = Math.max(w * 0.40 + 200, w - 380);
+    if (wide) castle(cx, gy, 4);
+    for (let x = wide ? w * 0.42 : w * 0.55; x < (wide ? cx - 14 : w); x += 18) pine(x, gy - 30, 3);
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 4); P(0, gy - 4, w, 5, '#5BD15B'); P(0, gy + 16, w, 8, '#c8a060'); P(0, gy + 24, w, 3, '#9a7a40');
     if (wide) {
       const px0 = w * 0.40;
       sprite('knight', px0, gy + 20 - H('knight') * u, u); sprite('wizard', px0 - 56, gy + 20 - H('wizard') * u, u); sprite('archer', px0 - 112, gy + 20 - H('archer') * u, u); sprite('priest', px0 - 168, gy + 20 - H('priest') * u, u);
       sprite('blob', px0 + 110, gy + 20 - H('blob') * u, u); sprite('bat', px0 + 150, gy - 48, u);
       g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', px0 + 52, gy - 36); g.fillText('！', px0 + 52, gy - 36);
-    } else { sprite('knight', w - 116, gy + 20 - H('knight') * u, u); sprite('blob', w - 56, gy + 20 - H('blob') * u, u); }
+    } else { sprite('knight', 40, gy + 20 - H('knight') * u, u); sprite('blob', 100, gy + 20 - H('blob') * u, u); }
     [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'));
-    word(26, 20, "TODAY'S TASK", wide ? 6 : Math.max(2, Math.floor((w - 52) / 72)));
-    outlined(30, wide ? 108 : 78, '〜 きょうのタスク 〜', wide ? 24 : 17);
+    word(26, 20, 'MY TASK', wide ? 7 : Math.max(2, Math.min(4, Math.floor((w - 220) / 42))));
   }
   /* ---- 下のフィールド帯 ---- */
   function drawField(cv) {
@@ -104,5 +105,13 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
   }
   /* ---- ログイン画面用：勇者1人 ---- */
   function drawHero(cv) { let w, h; [g, w, h] = prep(cv); sprite('knight', (w - 16 * 4) / 2, (h - 15 * 4) / 2, 4); }
-  return { drawStage, drawField, drawHero };
+  /* ---- v3.4 プロフィール窓・しょくぎょう選び用：キャラ1人を小さなキャンバスに描く ---- */
+  function drawChar(cv, name, u = 3) {
+    if (!SPR[name]) name = 'knight';
+    const d = window.devicePixelRatio || 1, W = 16 * u, Hh = 15 * u;
+    cv.width = W * d; cv.height = Hh * d; cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+    g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, Hh);
+    sprite(name, 0, Hh - H(name) * u, u);
+  }
+  return { drawStage, drawField, drawHero, drawChar };
 })();

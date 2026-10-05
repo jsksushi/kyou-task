@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -32,9 +32,57 @@ function dueLabel(k) {
 }
 
 /* ---------- 繰り返しルール ---------- */
+// type: daily | weekdays | weekly | monthly | monthEnd | custom（v3.4〜）
+// custom の項目：interval（◯ごと）, unit（day|week|month|year）, days（週の曜日）, monthMode（dom|nth|end）, dom, nth（1〜4、-1＝最終）, nthDay（曜日）,
+//               start（開始日）, endMode（never|count|until）, count, until
+const diffDays = (a, b) => Math.round((parseKey(b) - parseKey(a)) / 864e5);
+const mondayOf = k => addDays(k, -((parseKey(k).getDay() + 6) % 7));
+function customBase(r, k) {
+  const start = r.start || k;
+  if (k < start) return false;
+  const d = parseKey(k), s0 = parseKey(start), n = Math.max(1, Number(r.interval) || 1);
+  switch (r.unit) {
+    case 'day': return diffDays(start, k) % n === 0;
+    case 'week': {
+      const days = r.days && r.days.length ? r.days : [s0.getDay()];
+      return days.includes(d.getDay()) && (diffDays(mondayOf(start), mondayOf(k)) / 7) % n === 0;
+    }
+    case 'month': {
+      const md = (d.getFullYear() - s0.getFullYear()) * 12 + d.getMonth() - s0.getMonth();
+      if (md % n !== 0) return false;
+      if (r.monthMode === 'end') return d.getDate() === lastDayOfMonth(d);
+      if (r.monthMode === 'nth') {
+        if (d.getDay() !== Number(r.nthDay)) return false;
+        return Number(r.nth) === -1 ? d.getDate() + 7 > lastDayOfMonth(d) : Math.ceil(d.getDate() / 7) === Number(r.nth);
+      }
+      return d.getDate() === Math.min(Number(r.dom) || s0.getDate(), lastDayOfMonth(d));
+    }
+    case 'year': {
+      const yd = d.getFullYear() - s0.getFullYear();
+      return yd % n === 0 && d.getMonth() === s0.getMonth() && d.getDate() === Math.min(s0.getDate(), lastDayOfMonth(d));
+    }
+  }
+  return false;
+}
+// 「◯回で終わる」の最後の日（計算結果を覚えておく）
+const lastDayCache = new Map();
+function customLastDay(r) {
+  const sig = JSON.stringify([r.interval, r.unit, r.days, r.monthMode, r.dom, r.nth, r.nthDay, r.start, r.count]);
+  if (lastDayCache.has(sig)) return lastDayCache.get(sig);
+  let k = r.start || todayKey(), c = 0, last = null;
+  const want = Math.max(1, Number(r.count) || 1);
+  for (let i = 0; i < 40000; i++) { if (customBase(r, k) && ++c >= want) { last = k; break; } k = addDays(k, 1); }
+  lastDayCache.set(sig, last || '9999-12-31');
+  return lastDayCache.get(sig);
+}
 function ruleMatches(rule, k) {
   const d = parseKey(k);
+  if (rule.start && k < rule.start) return false;   // 開始日より前は出さない
   switch (rule.type) {
+    case 'custom':
+      if (rule.endMode === 'until' && rule.until && k > rule.until) return false;
+      if (rule.endMode === 'count' && k > customLastDay(rule)) return false;
+      return customBase(rule, k);
     case 'daily': return true;
     case 'weekdays': return d.getDay() >= 1 && d.getDay() <= 5;
     case 'weekly': return (rule.days || []).includes(d.getDay());
@@ -43,10 +91,31 @@ function ruleMatches(rule, k) {
   }
   return false;
 }
+// 次に出てくる日（見つからない＝終了した繰り返しは null）
 function nextOccurrence(rule, fromKey) {
   let k = fromKey;
-  for (let i = 0; i < 400; i++) { if (ruleMatches(rule, k)) return k; k = addDays(k, 1); }
-  return fromKey;
+  const lim = rule.type === 'custom' ? 3700 : 400;
+  for (let i = 0; i < lim; i++) { if (ruleMatches(rule, k)) return k; k = addDays(k, 1); }
+  return null;
+}
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const mdLabel = k => { const d = parseKey(k); return `${d.getMonth() + 1}/${d.getDate()}`; };
+// カスタムの内容を短い文にする（一覧やタスクのタグ用）
+function customLabel(r) {
+  const n = Math.max(1, Number(r.interval) || 1), s0 = parseKey(r.start || todayKey());
+  let t = '';
+  if (r.unit === 'day') t = n === 1 ? '毎日' : `${n}日ごと`;
+  else if (r.unit === 'week') {
+    const days = r.days && r.days.length ? r.days : [s0.getDay()];
+    t = (n === 1 ? '毎週 ' : `${n}週ごと `) + WD_ORDER.filter(x => days.includes(x)).map(x => WD[x]).join('・');
+  } else if (r.unit === 'month') {
+    t = (n === 1 ? '毎月 ' : `${n}か月ごと `) + (r.monthMode === 'end' ? '末日'
+      : r.monthMode === 'nth' ? (Number(r.nth) === -1 ? '最終' : `第${r.nth}`) + WD[Number(r.nthDay) || 0] + '曜日'
+      : `${Number(r.dom) || s0.getDate()}日`);
+  } else if (r.unit === 'year') t = (n === 1 ? '毎年 ' : `${n}年ごと `) + `${s0.getMonth() + 1}/${s0.getDate()}`;
+  if (r.endMode === 'count') t += `（${r.count}回まで）`;
+  else if (r.endMode === 'until' && r.until) t += `（${mdLabel(r.until)}まで）`;
+  return t;
 }
 function ruleLabel(r) {
   switch (r.type) {
@@ -58,6 +127,7 @@ function ruleLabel(r) {
     }
     case 'monthly': return `毎月 ${r.dom}日`;
     case 'monthEnd': return '毎月 末日';
+    case 'custom': return customLabel(r);
   }
   return '';
 }
@@ -71,11 +141,11 @@ function defaultState() {
       { id: uid(), name: '⭐ 今日できたら', color: PALETTE[1] },
       { id: uid(), name: '📅 今週', color: PALETTE[2] },
       { id: uid(), name: '🏖 土日やる', color: PALETTE[3] },
-      { id: MEMO_ID, name: '✍ メモ', color: '#ece3f7', type: 'memo' },
+      { id: MEMO_ID, name: '✏️ メモ', color: '#ece3f7', type: 'memo' },
     ],
     tasks: [],
     rules: [],
-    memos: [{ id: uid(), listId: MEMO_ID, text: '✍ ここはメモ欄です（件数には入りません）\nクリックで編集できます。URLはクリックで開けます。\nhttps://www.google.com', createdAt: Date.now() }],
+    memos: [{ id: uid(), listId: MEMO_ID, text: '✏️ ここはメモ欄です（件数には入りません）\nクリックで編集できます。URLはクリックで開けます。\nhttps://www.google.com', createdAt: Date.now() }],
     lastDate: todayKey(),
   };
 }
@@ -132,7 +202,7 @@ const memoLists = () => S.lists.filter(isMemoList);
 function ensureMemoLists() {
   let changed = false;
   if (!memoLists().length) {
-    S.lists.push({ id: MEMO_ID, name: '✍ メモ', color: '#ece3f7', type: 'memo' });
+    S.lists.push({ id: MEMO_ID, name: '✏️ メモ', color: '#ece3f7', type: 'memo' });
     changed = true;
   }
   const first = memoLists()[0].id;
@@ -147,11 +217,20 @@ const ruleById = id => S.rules.find(r => r.id === id);
 function generateRepeats() {
   const t = todayKey();
   for (const r of S.rules) {
+    // v3.4：「次回分は作成済み」の印が未来の日付のまま残っていると、その日が飛ばされていた（曜日を変えたときなど）。
+    //        今日の分は必ず判定し直す（同じ日の分が2つにならないよう上でチェック）
+    if (r.lastGenerated && r.lastGenerated > t) {
+      // 古い設定（開始日なし）：印の日がルールに合っていれば「初回の日」なので、それより前には出さない。
+      // 合っていない＝あとで曜日などを変えた → 今日から判定する
+      if (!r.start && ruleMatches(r, r.lastGenerated)) r.start = r.lastGenerated;
+      r.lastGenerated = addDays(t, -1);
+    }
     let k = r.lastGenerated ? addDays(r.lastGenerated, 1) : t;
     let guard = 0;
     while (k <= t && guard++ < 400) {
       const gid = `${r.id}_${k}`;
-      if (ruleMatches(r, k) && !taskById(gid)) {
+      // 同じ日の分がすでにある（最初の1件・別の端末で作った分・完了ずみ含む）なら作らない
+      if (ruleMatches(r, k) && !taskById(gid) && !S.tasks.some(x => x.ruleId === r.id && x.due === k)) {
         genIds.add(gid);
         S.tasks.push({
           id: gid, title: r.title, listId: r.listId, due: k, time: r.time || '',
@@ -195,7 +274,8 @@ function isOverdue(x) {
 function updateBadge() {
   const n = S.tasks.filter(x => isCounted(x)).length;
   document.getElementById('cnt').textContent = n;
-  document.title = n > 0 ? `(${n}) きょうのタスク` : 'きょうのタスク';
+  // v3.4：アプリのタイトルバーは「きょうのタスク（のこり3）ver3.4」。先頭をアプリ名と同じにすると二重表示にならない
+  document.title = n > 0 ? `きょうのタスク（のこり${n}）ver${APP_VERSION}` : `きょうのタスク ver${APP_VERSION}`;
   // きょうの しんちょく：今日クリアした分 ／（クリアした分＋のこり）
   const t = todayKey();
   const doneToday = S.tasks.filter(x => x.done && x.doneDate === t && ((x.due && x.due <= t) || x.listId === TODAY_ID)).length;
@@ -238,7 +318,7 @@ function taskRow(x) {
   if (x.listId === TODAY_ID && x.origListId && listById(x.origListId)) meta.push(`<span class="tag">📂 ${esc(listById(x.origListId).name)}</span>`);
   const btn = x.done
     ? `<button class="donebtn" data-undo="${x.id}" title="未完了に戻す">もどす</button>`
-    : `<button class="donebtn" data-done="${x.id}" title="完了にする">クリア</button>`;
+    : `<button class="donebtn" data-done="${x.id}" title="完了にする">完了</button>`;
   return `<div class="${cls.join(' ')}" data-id="${x.id}" draggable="${!x.done}">
     <div class="body">
       <div class="title" data-edit="${x.id}">${esc(x.title)}</div>
@@ -258,6 +338,19 @@ function lightColor(hex) {
     return '#' + f(r) + f(g) + f(b);
   } catch (e) { return '#ffffff'; }
 }
+// v3.4：ウィンドウの枠の色（リストごと）。未設定なら 繰り返しのあるリスト＝うすピンク、メモ＝水色、それ以外＝白。「今日」は金色のまま
+const FRAMES = [
+  { c: '', n: '自動' }, { c: '#ffffff', n: 'しろ' }, { c: '#f6b8d0', n: 'うすピンク' }, { c: '#9ad8f5', n: 'みずいろ' },
+  { c: '#a8e6b0', n: 'うすみどり' }, { c: '#c9b6f2', n: 'うすむらさき' }, { c: '#f5c48a', n: 'オレンジ' }, { c: '#8888b8', n: 'グレー' },
+];
+function frameColor(L) {
+  if (L.id === TODAY_ID) return '';
+  if (L.frame) return L.frame;
+  if (isMemoList(L)) return '#9ad8f5';
+  if (S.rules.some(r => r.listId === L.id)) return '#f6b8d0';
+  return '';
+}
+const frameStyle = L => { const c = frameColor(L); return c ? `border-color:${esc(c)}` : ''; };
 // 名前が絵文字で始まるときは ◆ ✎ を付けない（二重にならないように）
 const mark = (name, m) => (/^\p{Extended_Pictographic}/u.test(String(name)) ? '' : m + ' ');
 function isMobile() { return window.matchMedia('(max-width: 700px)').matches; }
@@ -285,8 +378,8 @@ function render() {
   for (const L of S.lists) {
     if (isMemoList(L)) {
       const memos = S.memos.filter(m => m.listId === L.id);
-      html.push(`<section class="col win memo ${mobile && mobileTab === L.id ? 'active' : ''}" data-memolist="${L.id}">
-        <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '✎')}${esc(L.name)}<span class="n">${memos.length}</span></span>
+      html.push(`<section class="col win memo ${mobile && mobileTab === L.id ? 'active' : ''}" data-memolist="${L.id}" style="${frameStyle(L)}">
+        <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '✏️')}${esc(L.name)}<span class="n">${memos.length}</span></span>
         ${memos.map(m => `<div class="memocard" data-memo="${m.id}">${linkify(m.text)}</div>`).join('')}
         <textarea class="memoadd" data-memoadd="${L.id}" rows="1" placeholder="${mobile ? '＋ メモを かきこむ' : '＋ メモを かきこむ（Ctrl+Enterで確定）'}"></textarea>
         ${mobile ? `<button class="btn small primary memosave" data-memosave="${L.id}">メモを かきこむ</button>` : ''}
@@ -296,14 +389,14 @@ function render() {
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
-    html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}">
+    html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}" style="${frameStyle(L)}">
       <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
       ${open.map(taskRow).join('') || '<div class="empty">タスクは ない。</div>'}
       <div class="addrow">
         <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを ついか' : '＋ タスクを ついか（Enter）'}">
         <button class="more" data-addmore="${L.id}" title="日時やメモを付けて追加">詳しく</button>
       </div>
-      ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>クリアずみ ${doneToday.length}</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
+      ${doneToday.length ? `<details ${openDetails.has(L.id) ? 'open' : ''} data-det="${L.id}"><summary>完了ずみ ${doneToday.length}</summary>${doneToday.map(taskRow).join('')}</details>` : ''}
     </section>`);
   }
   // 入力途中の内容とフォーカスを保持
@@ -330,23 +423,31 @@ function completeTask(id) {
   const x = taskById(id); if (!x) return;
   const wasCounted = isCounted(x);
   x.done = true; x.doneAt = Date.now(); x.doneDate = todayKey();
+  // たからばこ：たまに（約10%）宝物が手に入る。どのタスクで手に入れたかを覚えておく（もどしたら減らすため）
+  const item = Math.random() < TREASURE_RATE ? pickItem() : null;
+  if (item) x.loot = item.id;
   save(); render();
   const before = levelOf(EXP);
   addExp(1);
+  if (item) addItem(item.id, 1);
   const left = S.tasks.filter(t => isCounted(t)).length;
-  let m = `「${x.title}」を クリアした！ けいけんちを 1 かくとく！`;
-  if (levelOf(EXP) > before) m += ` レベルが あがった！ Lv ${levelOf(EXP)} に なった！`;
-  if (wasCounted) m += left ? ` きょうの のこりは ${left}つ。` : ' きょうの タスクを すべて クリアした！';
+  let m = `「${x.title}」を 完了した！ けいけんちを 1 かくとく！`;
+  const after = levelOf(EXP);
+  if (after > before) m += ` レベルが あがった！ Lv ${after} に なった！` + levelUpText(before, after);
+  if (item) m += ` …おや？ たからばこを みつけた！ ${item.icon}${item.name}（${RARITY[item.r].n}）を てにいれた！`;
+  if (wasCounted) m += left ? ` きょうの のこりは ${left}つ。` : ' きょうの タスクを すべて 完了した！';
   showMsg(m);
 }
 function undoTask(id) {
   const x = taskById(id); if (!x) return;
   x.done = false; delete x.doneAt; delete x.doneDate;
+  const lost = x.loot && ITEMS.find(i => i.id === x.loot);
+  if (x.loot) { addItem(x.loot, -1); delete x.loot; }  // そのタスクで手に入れた宝物も返す
   if (!listById(x.listId)) x.listId = TODAY_ID;
   autoMoveToToday();
   save(); render();
   addExp(-1);
-  showMsg(`「${x.title}」が また あらわれた！`);
+  showMsg(`「${x.title}」が また あらわれた！` + (lost ? ` ${lost.icon}${lost.name} を かえした…` : ''));
 }
 
 /* ---------- けいけんち・レベル ---------- */
@@ -354,10 +455,105 @@ function undoTask(id) {
 const EXP_PER_LEVEL = 10;
 let EXP = (() => { try { return Number(localStorage.getItem('kyou-task-exp')) || 0; } catch (e) { return 0; } })();
 const levelOf = e => Math.floor(Math.max(0, e) / EXP_PER_LEVEL) + 1;
-function renderLevel() {
-  document.getElementById('lv').textContent = levelOf(EXP);
-  document.getElementById('expFill').style.width = (Math.max(0, EXP) % EXP_PER_LEVEL) / EXP_PER_LEVEL * 100 + '%';
-  document.querySelector('.lvbox').title = `けいけんち ${EXP}（あと ${EXP_PER_LEVEL - (Math.max(0, EXP) % EXP_PER_LEVEL)} で レベルアップ）`;
+function renderLevel() { renderProfile(); }
+
+/* ---------- v3.4 勇者のプロフィール ---------- */
+// ステータスはレベルから計算するだけ（上がるだけ。ダメージなどはなし）。しょくぎょうで伸び方が変わる
+const JOBS = {
+  knight: { n: 'ナイト',       hp: [22, 7], mp: [0, 1], str: [10, 3], agi: [6, 2], def: [10, 3] },
+  wizard: { n: 'まほうつかい', hp: [14, 4], mp: [12, 5], str: [4, 1], agi: [7, 2], def: [5, 1] },
+  priest: { n: 'そうりょ',     hp: [17, 5], mp: [10, 4], str: [6, 2], agi: [6, 2], def: [7, 2] },
+  archer: { n: 'かりゅうど',   hp: [18, 5], mp: [4, 2], str: [8, 2], agi: [11, 4], def: [6, 2] },
+};
+const STAT_KEYS = [['hp', 'さいだいHP'], ['mp', 'さいだいMP'], ['str', 'ちから'], ['agi', 'すばやさ'], ['def', 'まもり']];
+function statsOf(job, lv) {
+  const J = JOBS[job] || JOBS.knight, o = {};
+  STAT_KEYS.forEach(([k], si) => {
+    const [base, gr] = J[k]; let v = base;
+    // 1レベルごとの上がり幅を少しばらつかせる（レベルで決まるので、何度計算しても同じ値）
+    for (let L = 2; L <= lv; L++) v += Math.max(0, gr + ((L * 7 + si * 3) % 3) - 1);
+    o[k] = v;
+  });
+  return o;
+}
+function levelUpText(from, to) {
+  const a = statsOf(PROFILE.job, from), b = statsOf(PROFILE.job, to);
+  return STAT_KEYS.filter(([k]) => b[k] > a[k]).map(([k, n]) => ` ${n}が ${b[k] - a[k]} あがった！`).join('');
+}
+const PROFILE_KEY = 'kyou-task-profile';
+let PROFILE = (() => { try { return { name: 'ゆうしゃ', job: 'knight', ...JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}') }; } catch (e) { return { name: 'ゆうしゃ', job: 'knight' }; } })();
+function setProfile(p, fromCloud) {
+  PROFILE = { name: String(p.name || 'ゆうしゃ').slice(0, 12), job: JOBS[p.job] ? p.job : 'knight' };
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(PROFILE)); } catch (e) {}
+  if (!fromCloud && window.Cloud && window.Cloud.saveProfile) window.Cloud.saveProfile(PROFILE);
+  renderProfile();
+}
+let drawnJob = '';
+function renderProfile() {
+  const lv = levelOf(EXP), st = statsOf(PROFILE.job, lv), e = Math.max(0, EXP) % EXP_PER_LEVEL;
+  const $ = id => document.getElementById(id);
+  $('pfName').textContent = PROFILE.name;
+  $('pfJob').textContent = JOBS[PROFILE.job].n;
+  $('lv').textContent = lv;
+  $('pfHP').textContent = st.hp; $('pfMP').textContent = st.mp;
+  $('pfStr').textContent = st.str; $('pfAgi').textContent = st.agi; $('pfDef').textContent = st.def;
+  $('expFill').style.width = e / EXP_PER_LEVEL * 100 + '%';
+  $('pfNext').textContent = `あと ${EXP_PER_LEVEL - e}`;
+  $('profile').title = `けいけんち ${EXP}（あと ${EXP_PER_LEVEL - e} で レベルアップ）\nクリックで なまえ・しょくぎょうを かえられます`;
+  const u = isMobile() ? 2 : 3, sig = PROFILE.job + u;
+  if (drawnJob !== sig && window.Art && Art.drawChar) { Art.drawChar($('pfHero'), PROFILE.job, u); drawnJob = sig; }
+}
+
+/* ---------- v3.4 たからばこ（集めるだけ。使う機能はなし） ---------- */
+const TREASURE_RATE = 0.1;
+const RARITY = { c: { n: 'ふつう', w: 60 }, r: { n: 'レア', w: 28 }, s: { n: 'すごくレア', w: 10 }, l: { n: 'でんせつ', w: 2 } };
+const ITEMS = [
+  { id: 'leaf', r: 'c', icon: '🌿', name: 'にがい はっぱ', d: 'かむと すこし めが さめる。' },
+  { id: 'onigiri', r: 'c', icon: '🍙', name: 'おにぎり', d: 'ひるやすみの みかた。' },
+  { id: 'stone', r: 'c', icon: '🪨', name: 'まるい いし', d: 'なんとなく ひろってしまった。' },
+  { id: 'feather', r: 'c', icon: '🪶', name: 'とりの はね', d: 'かるい。とても かるい。' },
+  { id: 'mushroom', r: 'c', icon: '🍄', name: 'ちいさな キノコ', d: 'たべないほうが いい きがする。' },
+  { id: 'screw', r: 'c', icon: '🔩', name: 'さびた ネジ', d: 'どこかの きかいの ぶひん。' },
+  { id: 'clip', r: 'c', icon: '📎', name: 'まがった クリップ', d: 'しょるいを ひとつに まとめた あかし。' },
+  { id: 'candy', r: 'c', icon: '🍬', name: 'あめだま', d: 'ゆうがたの エネルギー。' },
+  { id: 'key', r: 'r', icon: '🗝️', name: 'ふしぎな かぎ', d: 'どの とびらの かぎかは わからない。' },
+  { id: 'compass', r: 'r', icon: '🧭', name: 'まよわない コンパス', d: 'つぎに やることを ゆびさす。' },
+  { id: 'candle', r: 'r', icon: '🕯️', name: 'よるの ろうそく', d: 'ざんぎょうの おともに。' },
+  { id: 'coffee', r: 'r', icon: '☕', name: 'さめない コーヒー', d: 'いつまでも あたたかい。' },
+  { id: 'map', r: 'r', icon: '🗺️', name: 'ふるい ちず', d: 'てつづきの みちすじが かいてある。' },
+  { id: 'coin', r: 'r', icon: '🪙', name: 'きんいろの コイン', d: 'ぴかぴかに みがかれている。' },
+  { id: 'gem', r: 's', icon: '💎', name: 'そらいろの いし', d: 'のぞくと きもちが はれる。' },
+  { id: 'pen', r: 's', icon: '🖋️', name: 'しめきりの ペン', d: 'これで かくと しめきりに まにあう。' },
+  { id: 'hourglass', r: 's', icon: '⏳', name: 'とまる すなどけい', d: 'すこしだけ じかんが ゆっくりになる…きがする。' },
+  { id: 'bell', r: 's', icon: '🎐', name: 'かぜの すず', d: 'なると あたまが すっきりする。' },
+  { id: 'crown', r: 'l', icon: '👑', name: 'ていじの かんむり', d: 'もちぬしは かならず ていじに かえれるという。' },
+  { id: 'stamp', r: 'l', icon: '🌈', name: 'にじいろの ハンコ', d: 'おすと どんな しんせいも とおるという。' },
+];
+const ITEMS_KEY = 'kyou-task-items';
+let ITEM_COUNTS = (() => { try { return JSON.parse(localStorage.getItem(ITEMS_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+function pickItem() {
+  const tot = Object.values(RARITY).reduce((a, b) => a + b.w, 0);
+  let x = Math.random() * tot, rk = 'c';
+  for (const [k, v] of Object.entries(RARITY)) { if ((x -= v.w) < 0) { rk = k; break; } }
+  const pool = ITEMS.filter(i => i.r === rk);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function setItems(counts) {
+  ITEM_COUNTS = { ...(counts || {}) };
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify(ITEM_COUNTS)); } catch (e) {}
+  if (document.getElementById('dlgItems').open) renderItems();
+}
+function addItem(id, d) {
+  setItems({ ...ITEM_COUNTS, [id]: Math.max(0, (ITEM_COUNTS[id] || 0) + d) });
+  if (window.Cloud && window.Cloud.addItem) window.Cloud.addItem(id, d);
+}
+function renderItems() {
+  const n = id => Math.max(0, Number(ITEM_COUNTS[id]) || 0);
+  const got = ITEMS.filter(i => n(i.id) > 0).length;
+  document.getElementById('itemsHead').textContent = `あつめた しゅるい ${got} / ${ITEMS.length}`;
+  document.getElementById('itemRows').innerHTML = ITEMS.map(i => n(i.id) > 0
+    ? `<div class="itm r-${i.r}"><span class="ic">${i.icon}</span><div class="t"><b>${esc(i.name)}</b> <span class="cnt">×${n(i.id)}</span><div class="s"><span class="rk">${RARITY[i.r].n}</span> ${esc(i.d)}</div></div></div>`
+    : `<div class="itm none"><span class="ic">？</span><div class="t">？？？<div class="s"><span class="rk">${RARITY[i.r].n}</span></div></div></div>`).join('');
 }
 function setExp(v) { EXP = Math.max(0, Number(v) || 0); try { localStorage.setItem('kyou-task-exp', EXP); } catch (e) {} renderLevel(); }
 function addExp(d) { setExp(EXP + d); if (window.Cloud && window.Cloud.addExp) window.Cloud.addExp(d); }
@@ -440,14 +636,33 @@ function setTime(v) {
   document.getElementById('fTime').value = v;
   document.querySelectorAll('[data-time]').forEach(b => b.classList.toggle('on', b.dataset.time === v));
 }
-function setRepeatUI(type, days, dom) {
+let customDraft = null;   // カスタム繰り返しの設定（ダイアログで編集中のもの）
+let repeatPrev = '';
+function setRepeatUI(type, days, dom, rule) {
+  customDraft = type === 'custom' && rule ? pickCustom(rule) : null;
+  syncCustomOption();
   document.getElementById('fRepeat').value = type || '';
+  repeatPrev = type || '';
   document.querySelectorAll('#rowWeekdays input').forEach(c => { c.checked = (days || []).includes(Number(c.value)); });
   document.getElementById('fDom').value = dom || new Date().getDate();
   repeatChanged();
 }
+const CUSTOM_KEYS = ['interval', 'unit', 'days', 'monthMode', 'dom', 'nth', 'nthDay', 'start', 'endMode', 'count', 'until'];
+const pickCustom = r => Object.fromEntries(CUSTOM_KEYS.filter(k => r[k] !== undefined).map(k => [k, Array.isArray(r[k]) ? [...r[k]] : r[k]]));
+// 繰り返しの選択肢に「カスタム：◯◯」を出す（設定済みのときだけ）
+function syncCustomOption() {
+  const sel = document.getElementById('fRepeat');
+  const opt = sel.querySelector('option[value="custom"]');
+  opt.hidden = !customDraft;
+  opt.textContent = customDraft ? 'カスタム：' + customLabel(customDraft) : 'カスタム';
+}
 function repeatChanged() {
-  const v = document.getElementById('fRepeat').value;
+  const sel = document.getElementById('fRepeat');
+  if (sel.value === '__custom') { openCustomDialog(); return; }
+  repeatPrev = sel.value;
+  const v = sel.value;
+  // 繰り返しを設定しているときは「期限日」→「開始日」
+  document.getElementById('lblDue').textContent = v ? '開始日' : '期限日';
   document.getElementById('rowWeekdays').hidden = v !== 'weekly';
   document.getElementById('rowDom').hidden = v !== 'monthly';
   const hint = document.getElementById('repeatHint');
@@ -457,7 +672,8 @@ function repeatChanged() {
 }
 function readRepeat() {
   const type = document.getElementById('fRepeat').value;
-  if (!type) return null;
+  if (!type || type === '__custom') return null;
+  if (type === 'custom') return { type, ...pickCustom(customDraft || {}) };
   const days = [...document.querySelectorAll('#rowWeekdays input:checked')].map(c => Number(c.value));
   const dom = Math.min(31, Math.max(1, Number(document.getElementById('fDom').value) || 1));
   return { type, days, dom };
@@ -476,7 +692,7 @@ function openTaskDialog(mode, id, listId, presetTitle) {
     document.getElementById('fTitle').value = x.title;
     fillListSelect(document.getElementById('fList'), x.listId);
     setDue(x.due || ''); setTime(x.time || '');
-    setRepeatUI(r ? r.type : '', r ? r.days : [], r ? r.dom : null);
+    setRepeatUI(r ? r.type : '', r ? r.days : [], r ? r.dom : null, r);
     document.getElementById('fMemo').value = x.memo || '';
   } else if (mode === 'rule') {
     const r = ruleById(id);
@@ -484,7 +700,7 @@ function openTaskDialog(mode, id, listId, presetTitle) {
     document.getElementById('fTitle').value = r.title;
     fillListSelect(document.getElementById('fList'), r.listId);
     setDue(''); setTime(r.time || '');
-    setRepeatUI(r.type, r.days, r.dom);
+    setRepeatUI(r.type, r.days, r.dom, r);
     document.getElementById('fMemo').value = r.memo || '';
   } else {
     titleEl.textContent = 'タスクを追加';
@@ -516,10 +732,11 @@ function saveTaskDialog() {
       S.rules = S.rules.filter(z => z.id !== r.id);
       S.tasks.forEach(x => { if (x.ruleId === r.id) delete x.ruleId; });
     } else {
-      Object.assign(r, { title, listId, time, memo, ...rep });
+      updateRule(r, { title, listId, time, memo, ...rep });
       // まだ完了していない今後分（今日以降の未完了）にも反映
       S.tasks.forEach(x => { if (x.ruleId === r.id && !x.done && x.due >= t) { x.title = title; x.time = time; x.memo = memo; } });
     }
+    generateRepeats(); autoMoveToToday();
     save(); render(); return true;
   }
 
@@ -543,13 +760,15 @@ function saveTaskDialog() {
   // 繰り返し設定
   const cur = x.ruleId && ruleById(x.ruleId);
   if (rep && cur) {
-    Object.assign(cur, { title, listId: x.listId === TODAY_ID && x.origListId ? x.origListId : x.listId, time, memo, ...rep });
+    updateRule(cur, { title, listId: x.listId === TODAY_ID && x.origListId ? x.origListId : x.listId, time, memo, ...rep });
   } else if (rep && !cur) {
     const home = x.listId === TODAY_ID && x.origListId && listById(x.origListId) ? x.origListId : x.listId;
     const r = { id: uid(), title, listId: home, time, memo, ...rep };
     // このタスクを初回分にする：期限がルールに合わなければ次の該当日にそろえる
-    const base = x.due || t;
-    x.due = ruleMatches(r, base) ? base : nextOccurrence(r, base);
+    let base = x.due || t;
+    if (r.type === 'custom' && r.start > base) base = r.start;
+    x.due = ruleMatches(r, base) ? base : (nextOccurrence(r, base) || base);
+    r.start = r.type === 'custom' ? (r.start || x.due) : x.due;   // 開始日（これより前には出さない）
     r.lastGenerated = x.due < t ? t : x.due;
     x.ruleId = r.id;
     S.rules.push(r);
@@ -558,9 +777,61 @@ function saveTaskDialog() {
     S.rules = S.rules.filter(z => z.id !== cur.id);
     S.tasks.forEach(z => { if (z.ruleId === cur.id) delete z.ruleId; });
   }
+  generateRepeats();
   autoMoveToToday();
   save(); render();
   return true;
+}
+// 繰り返し設定を書き換える。出てくる日が変わったら、今日の分をもう一度判定し直す
+function updateRule(r, next) {
+  const sched = o => JSON.stringify([o.type, o.days, o.dom, ...CUSTOM_KEYS.map(k => o[k])]);
+  const before = sched(r);
+  Object.assign(r, next);
+  const t = todayKey();
+  if (sched(r) !== before && r.lastGenerated && r.lastGenerated >= t) r.lastGenerated = addDays(t, -1);
+}
+
+/* ---------- v3.4 カスタムの繰り返し（Google Keep のリマインダー風） ---------- */
+const dlgCustom = document.getElementById('dlgCustom');
+function defaultCustom() {
+  const st = (editing && editing.mode !== 'rule' && fDueVal) || todayKey(), d = parseKey(st);
+  return { interval: 1, unit: 'week', days: [d.getDay()], monthMode: 'dom', dom: d.getDate(), nth: Math.min(4, Math.ceil(d.getDate() / 7)), nthDay: d.getDay(), start: st, endMode: 'never', count: 10, until: addDays(st, 30) };
+}
+function openCustomDialog() {
+  const c = { ...defaultCustom(), ...(customDraft || {}) };
+  const $ = id => document.getElementById(id);
+  $('cInterval').value = c.interval; $('cUnit').value = c.unit;
+  document.querySelectorAll('#cDays input').forEach(i => { i.checked = (c.days || []).includes(Number(i.value)); });
+  document.querySelectorAll('[name=cMonth]').forEach(i => { i.checked = i.value === c.monthMode; });
+  $('cDom').value = c.dom; $('cNth').value = c.nth; $('cNthDay').value = c.nthDay;
+  $('cStart').value = c.start;
+  document.querySelectorAll('[name=cEnd]').forEach(i => { i.checked = i.value === c.endMode; });
+  $('cCount').value = c.count; $('cUntil').value = c.until;
+  customUI();
+  dlgCustom.showModal();
+}
+function readCustom() {
+  const $ = id => document.getElementById(id);
+  const start = $('cStart').value || todayKey();
+  const c = {
+    interval: Math.min(99, Math.max(1, Number($('cInterval').value) || 1)), unit: $('cUnit').value,
+    days: [...document.querySelectorAll('#cDays input:checked')].map(i => Number(i.value)),
+    monthMode: (document.querySelector('[name=cMonth]:checked') || {}).value || 'dom',
+    dom: Math.min(31, Math.max(1, Number($('cDom').value) || 1)), nth: Number($('cNth').value), nthDay: Number($('cNthDay').value),
+    start, endMode: (document.querySelector('[name=cEnd]:checked') || {}).value || 'never',
+    count: Math.min(999, Math.max(1, Number($('cCount').value) || 1)), until: $('cUntil').value || start,
+  };
+  if (c.unit === 'week' && !c.days.length) c.days = [parseKey(start).getDay()];
+  return c;
+}
+function customUI() {
+  const c = readCustom();
+  document.getElementById('cRowWeek').hidden = c.unit !== 'week';
+  document.getElementById('cRowMonth').hidden = c.unit !== 'month';
+  const nx = nextOccurrence({ type: 'custom', ...c }, c.start);
+  const end = c.endMode === 'count' ? `${c.count}回で 終わります` : c.endMode === 'until' ? `${dueLabel(c.until)} まで` : 'ずっと 続きます';
+  document.getElementById('cSummary').textContent = `${customLabel({ ...c, endMode: 'never' })} に くりかえします。${dueLabel(c.start)} から、${end}。`
+    + (nx ? `（1回目：${dueLabel(nx)}）` : '（この設定だと 1回も 出てきません）');
 }
 
 /* ---------- メモ ---------- */
@@ -586,6 +857,7 @@ function renderListRows() {
       <span class="ltype ${memo ? 'm' : ''}">${memo ? 'メモ' : 'タスク'}</span>
       <input type="text" value="${esc(l.name)}" data-lname="${l.id}">
       <div class="swatches">${PALETTE.map(c => `<button class="sw ${c === l.color ? 'on' : ''}" style="background:${c}" data-lcolor="${l.id}" data-c="${c}" title="${c}"></button>`).join('')}</div>
+      ${l.id === TODAY_ID ? '<span class="frames hint">わくの色：金色（固定）</span>' : `<div class="frames"><span class="hint">わくの色</span>${FRAMES.map(f => `<button class="fr ${(l.frame || '') === f.c ? 'on' : ''} ${f.c ? '' : 'auto'}" style="${f.c ? 'border-color:' + f.c : ''}" data-lframe="${l.id}" data-f="${f.c}" title="${f.n}${f.c ? '' : '（繰り返しのあるリスト＝うすピンク、メモ＝みずいろ）'}">${f.c ? '' : '自'}</button>`).join('')}</div>`}
       <button class="btn small" data-lup="${l.id}" ${i === 0 ? 'disabled' : ''}>↑</button>
       <button class="btn small" data-ldown="${l.id}" ${i === S.lists.length - 1 ? 'disabled' : ''}>↓</button>
       <button class="btn small danger" data-ldel="${l.id}" ${l.id === TODAY_ID ? 'disabled title="「今日」は削除できません"' : ''}>削除</button>
@@ -624,10 +896,10 @@ function renderRuleRows() {
   const t = todayKey();
   box.innerHTML = S.rules.map(r => {
     const L = listById(r.listId);
-    const next = nextOccurrence(r, addDays(r.lastGenerated || t, 1));
+    const next = nextOccurrence(r, addDays(r.lastGenerated && r.lastGenerated < t ? r.lastGenerated : addDays(t, -1), 1));
     return `<div class="hrow">
       <span class="dot" style="background:${L ? esc(L.color) : '#ccc'}"></span>
-      <div class="t">${esc(r.title)}<div class="s">🔁 ${ruleLabel(r)}${r.time ? ' ' + r.time + 'まで' : ''}／${L ? esc(L.name) : ''}／次回 ${dueLabel(next)}</div></div>
+      <div class="t">${esc(r.title)}<div class="s">🔁 ${ruleLabel(r)}${r.time ? ' ' + r.time + 'まで' : ''}／${L ? esc(L.name) : ''}／${next ? '次回 ' + dueLabel(next) : '（終了）'}</div></div>
       <button class="btn small" data-redit="${r.id}">編集</button>
     </div>`;
   }).join('');
@@ -778,11 +1050,35 @@ function bind() {
   });
 
   // タスクダイアログ
+  // 新しく作るカスタム繰り返しは「開始日」欄とカスタムの開始日をそろえる
+  const dueToStart = () => {
+    const cur = editing && editing.mode === 'task' && taskById(editing.id);
+    if (customDraft && !(cur && cur.ruleId) && editing.mode !== 'rule') { customDraft.start = fDueVal || todayKey(); syncCustomOption(); }
+  };
   document.querySelectorAll('[data-due]').forEach(b => b.onclick = () => {
     const t = todayKey();
     setDue(b.dataset.due === 'none' ? '' : b.dataset.due === 'today' ? t : addDays(t, 1));
+    dueToStart();
   });
-  document.getElementById('fDue').onchange = e => setDue(e.target.value);
+  document.getElementById('fDue').onchange = e => { setDue(e.target.value); dueToStart(); };
+  // カスタム繰り返しダイアログ
+  dlgCustom.addEventListener('input', customUI);
+  dlgCustom.addEventListener('change', customUI);
+  document.getElementById('btnCustomOk').onclick = () => {
+    customDraft = readCustom();
+    if (customDraft.endMode === 'until' && customDraft.until < customDraft.start) { alert('終了日は開始日より後にしてください'); return; }
+    const cur = editing && editing.mode === 'task' && taskById(editing.id);
+    if (editing.mode !== 'rule' && !(cur && cur.ruleId)) setDue(customDraft.start);
+    syncCustomOption();
+    document.getElementById('fRepeat').value = 'custom';
+    dlgCustom.close('ok');
+    repeatChanged();
+  };
+  document.getElementById('btnCustomCancel').onclick = () => dlgCustom.close();
+  dlgCustom.addEventListener('close', () => {
+    const sel = document.getElementById('fRepeat');
+    if (sel.value === '__custom') { sel.value = repeatPrev; repeatChanged(); }
+  });
   document.querySelectorAll('[data-time]').forEach(b => b.onclick = () => setTime(b.dataset.time));
   document.getElementById('fTime').onchange = e => setTime(e.target.value);
   document.getElementById('fRepeat').onchange = repeatChanged;
@@ -828,6 +1124,29 @@ function bind() {
   document.getElementById('btnRules').onclick = () => { renderRuleRows(); document.getElementById('dlgRules').showModal(); };
   document.getElementById('btnHistory').onclick = () => { histSel.clear(); renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
   document.getElementById('btnBackup').onclick = () => document.getElementById('dlgBackup').showModal();
+  document.getElementById('btnItems').onclick = () => { renderItems(); document.getElementById('dlgItems').showModal(); };
+  // プロフィール（なまえ・しょくぎょう）
+  const dlgProfile = document.getElementById('dlgProfile');
+  let pickJob = 'knight';
+  const renderJobs = () => document.querySelectorAll('[data-job]').forEach(b => b.classList.toggle('on', b.dataset.job === pickJob));
+  document.getElementById('jobRow').innerHTML = Object.entries(JOBS).map(([k, j]) => `<button type="button" class="job" data-job="${k}"><canvas data-jobcv="${k}"></canvas><span>${j.n}</span></button>`).join('');
+  document.getElementById('jobRow').onclick = e => { const b = e.target.closest('[data-job]'); if (b) { pickJob = b.dataset.job; renderJobs(); } };
+  document.getElementById('profile').onclick = () => {
+    pickJob = PROFILE.job;
+    document.getElementById('pName').value = PROFILE.name;
+    document.querySelectorAll('[data-jobcv]').forEach(cv => { try { Art.drawChar(cv, cv.dataset.jobcv, 3); } catch (e) {} });
+    renderJobs();
+    dlgProfile.showModal();
+  };
+  document.getElementById('profileForm').onsubmit = e => {
+    e.preventDefault();
+    const name = document.getElementById('pName').value.trim() || 'ゆうしゃ';
+    const changed = name !== PROFILE.name || pickJob !== PROFILE.job;
+    setProfile({ name, job: pickJob });
+    dlgProfile.close();
+    if (changed) showMsg(`${PROFILE.name}は ${JOBS[PROFILE.job].n}に なった！`);
+  };
+  document.getElementById('btnProfileCancel').onclick = () => dlgProfile.close();
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 
   // リスト管理
@@ -840,6 +1159,7 @@ function bind() {
     const d = e.target.dataset;
     const idx = id => S.lists.findIndex(l => l.id === id);
     if (d.lcolor) { listById(d.lcolor).color = d.c; save(); render(); renderListRows(); }
+    else if (d.lframe !== undefined) { const L = listById(d.lframe); if (d.f) L.frame = d.f; else delete L.frame; save(); render(); renderListRows(); }
     else if (d.lup) { const i = idx(d.lup); [S.lists[i - 1], S.lists[i]] = [S.lists[i], S.lists[i - 1]]; save(); render(); renderListRows(); }
     else if (d.ldown) { const i = idx(d.ldown); [S.lists[i + 1], S.lists[i]] = [S.lists[i], S.lists[i + 1]]; save(); render(); renderListRows(); }
     else if (d.ldel) { deletingList = d.ldel; renderListRows(); }
@@ -852,7 +1172,7 @@ function bind() {
   const addList = memo => {
     const used = S.lists.map(l => l.color);
     const color = memo ? (['#ece3f7', '#e8eaed', '#efe6d8', '#e4f1f0'].find(c => !used.includes(c)) || '#ece3f7') : (PALETTE.find(c => !used.includes(c)) || PALETTE[7]);
-    S.lists.push(memo ? { id: uid(), name: '✍ 新しいメモ', color, type: 'memo' } : { id: uid(), name: '新しいリスト', color });
+    S.lists.push(memo ? { id: uid(), name: '✏️ 新しいメモ', color, type: 'memo' } : { id: uid(), name: '新しいリスト', color });
     save(); render(); renderListRows();
     const inputs = lr.querySelectorAll('[data-lname]');
     const last = inputs[inputs.length - 1]; last.focus(); last.select();
@@ -920,7 +1240,7 @@ function bind() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
   window.addEventListener('focus', tick);
   // 画面幅が変わったら（PC⇔スマホ表示）描き直す
-  window.matchMedia('(max-width: 700px)').addEventListener('change', () => render());
+  window.matchMedia('(max-width: 700px)').addEventListener('change', () => { render(); renderProfile(); });
   // スマホのタブ切替
   document.getElementById('tabs').addEventListener('click', e => {
     const b = e.target.closest('[data-tab]'); if (!b) return;
@@ -942,6 +1262,7 @@ render();   // まず端末内の控えで表示（クラウドの読み込み�
 renderLevel();
 let openedMsg = false;
 document.getElementById('ver').textContent = APP_VERSION;
+updateBadge();
 document.getElementById('verNew').onclick = updateApp;
 document.getElementById('msgwrap').onclick = () => {
   clearTimeout(msgHide); document.getElementById('msgwrap').classList.remove('show');
@@ -978,6 +1299,9 @@ window.App = {
   },
   setExp,
   get EXP() { return EXP; },
+  setProfile: p => setProfile(p, true),
+  get PROFILE() { return PROFILE; },
+  setItems,
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;
@@ -993,6 +1317,14 @@ window.App = {
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
+    // v3.4：メモのリスト名の先頭「✍」を「✏️」に（分かりやすくするため。1回だけ）
+    try {
+      if (!localStorage.getItem('kyou-task-pencil')) {
+        S.lists.forEach(l => { if (isMemoList(l) && String(l.name).startsWith('✍')) l.name = '✏️' + String(l.name).slice(1).replace(/^\uFE0F/, ''); });
+        S.memos.forEach(m => { if (String(m.text).startsWith('✍ ここはメモ欄です')) m.text = '✏️' + m.text.slice(1); });
+        localStorage.setItem('kyou-task-pencil', '1');
+      }
+    } catch (e) {}
     dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
     render();
   },

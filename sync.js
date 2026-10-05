@@ -57,6 +57,8 @@ const synced = Object.fromEntries(COLS.map(c => [c, new Map()]));
 const colRef = c => collection(db, 'users', user.uid, c);
 const metaRef = () => doc(db, 'users', user.uid, 'meta', 'info');
 const statsRef = () => doc(db, 'users', user.uid, 'meta', 'stats');   // けいけんち（exp）
+const profileRef = () => doc(db, 'users', user.uid, 'meta', 'profile'); // v3.4 なまえ・しょくぎょう
+const itemsRef = () => doc(db, 'users', user.uid, 'meta', 'items');     // v3.4 たからばこの宝物 { counts: {アイテムID: 個数} }
 
 async function commitOps(ops) {
   for (let i = 0; i < ops.length; i += 400) {
@@ -117,7 +119,7 @@ async function uploadAll(S, opts = {}) {
 
 async function linkDevice() {
   const S = App.S;
-  const hasLocal = S.tasks.length > 0 || S.rules.length > 0 || S.memos.some(m => !String(m.text).startsWith('✍ ここはメモ欄です'));
+  const hasLocal = S.tasks.length > 0 || S.rules.length > 0 || S.memos.some(m => !/^(✍|✏️) ここはメモ欄です/.test(String(m.text)));
   App.cloudStatus('linking');
   const meta = await getDocFromServer(metaRef());
   if (!meta.exists()) {
@@ -139,7 +141,7 @@ async function linkDevice() {
       const remap = id => map[id] || id;
       const tasks = S.tasks.map(t => ({ ...t, listId: remap(t.listId), origListId: t.origListId ? remap(t.origListId) : undefined }));
       const rules = S.rules.map(r => ({ ...r, listId: remap(r.listId) }));
-      const memos = S.memos.filter(m => !m.text.startsWith('✍ ここはメモ欄です'));
+      const memos = S.memos.filter(m => !/^(✍|✏️) ここはメモ欄です/.test(String(m.text)));
       await uploadAll({ lists: newLists }, { orderBase: remoteLists.length, only: { lists: newLists, tasks, rules, memos } });
     }
   }
@@ -175,8 +177,29 @@ function listen() {
     const start = Math.max(App.EXP, App.S.tasks.filter(t => t.done).length);
     setDoc(statsRef(), { exp: start }, { merge: true }).catch(err => App.cloudStatus('error', err));
   }, err => App.cloudStatus('error', err)));
+  // v3.4 プロフィール：まだクラウドに無ければ、この端末の内容を送る
+  let profileChecked = false;
+  unsubs.push(onSnapshot(profileRef(), snap => {
+    if (snap.exists()) { App.setProfile(snap.data()); return; }
+    if (profileChecked || snap.metadata.fromCache) return;
+    profileChecked = true;
+    saveProfile(App.PROFILE);
+  }, err => App.cloudStatus('error', err)));
+  // v3.4 宝物
+  unsubs.push(onSnapshot(itemsRef(), snap => {
+    if (snap.exists()) App.setItems(snap.data().counts || {});
+  }, err => App.cloudStatus('error', err)));
 }
-// クリアしたとき（+1）・もどしたとき（-1）。2台で同時に押しても数がずれない足し算で送る
+function saveProfile(p) {
+  if (!user) return;
+  setDoc(profileRef(), { name: p.name, job: p.job }, { merge: true }).catch(err => App.cloudStatus('error', err));
+}
+// 宝物の数：2台で同時に操作しても数がずれない足し算で送る
+function addItem(id, d) {
+  if (!user) return;
+  setDoc(itemsRef(), { counts: { [id]: increment(d) } }, { merge: true }).catch(err => App.cloudStatus('error', err));
+}
+// 完了したとき（+1）・もどしたとき（-1）。2台で同時に押しても数がずれない足し算で送る
 function addExp(d) {
   if (!user) return;
   setDoc(statsRef(), { exp: increment(d) }, { merge: true }).catch(err => App.cloudStatus('error', err));
@@ -218,6 +241,8 @@ onAuthStateChanged(auth, async u => {
 window.Cloud = {
   push,
   addExp,
+  saveProfile,
+  addItem,
   login,
   logout: () => { if (confirm('ログアウトします。よろしいですか？')) signOut(auth); },
 };

@@ -19,11 +19,17 @@
 <header class="stage-wrap">
   <canvas id="stage"></canvas>
   <div class="corner">
-    <div class="lvbox" title="クリアしたタスクの数がけいけんちになります（10でレベルアップ）">
-      <span>Lv <b id="lv">1</b></span>
-      <span>EXP <span class="expbar"><i id="expFill" style="width:0"></i></span></span>
-    </div>
-    <div class="verbox">ver <span id="ver"></span></div>
+    <!-- v3.4 勇者のプロフィール（クリックで なまえ・しょくぎょうを変更） -->
+    <section class="win profile" id="profile" role="button" tabindex="0">
+      <span class="ttl" id="pfName">ゆうしゃ</span>
+      <div class="pf-top">
+        <canvas id="pfHero"></canvas>
+        <div class="pf-id"><span id="pfJob">ナイト</span><span class="pf-lv">Lv <b id="lv">1</b></span></div>
+      </div>
+      <div class="pf-hpmp"><span>HP <b id="pfHP"></b></span><span>MP <b id="pfMP"></b></span></div>
+      <div class="pf-st"><span>ちから <b id="pfStr"></b></span><span>すばやさ <b id="pfAgi"></b></span><span>まもり <b id="pfDef"></b></span></div>
+      <div class="pf-exp">E <span class="expbar"><i id="expFill" style="width:0"></i></span><small id="pfNext"></small></div>
+    </section>
     <button class="vernew" id="verNew" hidden></button>
   </div>
 </header>
@@ -39,7 +45,8 @@
   <section class="win cmd">
     <span class="ttl">コマンド</span>
     <button class="cbtn" id="btnRules">くりかえし</button>
-    <button class="cbtn" id="btnHistory">クリアのきろく</button>
+    <button class="cbtn" id="btnHistory">完了のきろく</button>
+    <button class="cbtn" id="btnItems">どうぐ</button>
     <button class="cbtn" id="btnLists">リストかんり</button>
     <button class="cbtn" id="btnBackup">セーブ・アカウント</button>
   </section>
@@ -77,7 +84,7 @@
       <select id="fList"></select>
     </label>
     <div class="field" id="rowDue">
-      <span>期限日</span>
+      <span id="lblDue">期限日</span>
       <div class="chips">
         <button type="button" class="chip" data-due="none">なし</button>
         <button type="button" class="chip" data-due="today">今日</button>
@@ -109,6 +116,8 @@
           <option value="weekly">毎週（曜日を選ぶ）</option>
           <option value="monthly">毎月（日付を指定）</option>
           <option value="monthEnd">毎月末日</option>
+          <option value="custom" hidden>カスタム</option>
+          <option value="__custom">カスタム…</option>
         </select>
         <div class="chips" id="rowWeekdays" hidden>
           <label class="wd"><input type="checkbox" value="1">月</label>
@@ -180,7 +189,7 @@
 
 <!-- 完了履歴 -->
 <dialog id="dlgHistory" class="dlg wide">
-  <h2>クリアのきろく（完了履歴）</h2>
+  <h2>完了のきろく</h2>
   <p class="hint" id="historyHint">「戻す」で未完了に戻ります。左のチェックで選んでまとめて削除もできます。</p>
   <label class="selall" id="rowSelAll"><input type="checkbox" id="hSelAll"> すべて選択</label>
   <div id="historyRows"></div>
@@ -202,6 +211,7 @@
       <input type="file" id="fileImport" accept="application/json,.json" hidden>
     </label>
   </div>
+  <p class="hint">アプリの バージョン：ver <span id="ver"></span></p>
   <div class="account">
     <span>ログイン中：<b id="accountEmail"></b></span>
     <button type="button" class="btn small" id="btnLogout">ログアウト</button>
@@ -210,6 +220,66 @@
     <span class="spacer"></span>
     <button type="button" class="btn" data-close>閉じる</button>
   </div>
+</dialog>
+
+<!-- v3.4 カスタムの繰り返し -->
+<dialog id="dlgCustom" class="dlg">
+  <h2>カスタムの 繰り返し</h2>
+  <div class="field"><span>間隔</span>
+    <div class="chips"><input type="number" id="cInterval" min="1" max="99" class="num">
+      <select id="cUnit" class="sel"><option value="day">日</option><option value="week">週間</option><option value="month">か月</option><option value="year">年</option></select> ごと</div>
+  </div>
+  <div class="field" id="cRowWeek"><span>曜日</span>
+    <div class="chips" id="cDays">
+      <label class="wd"><input type="checkbox" value="1">月</label><label class="wd"><input type="checkbox" value="2">火</label><label class="wd"><input type="checkbox" value="3">水</label><label class="wd"><input type="checkbox" value="4">木</label><label class="wd"><input type="checkbox" value="5">金</label><label class="wd"><input type="checkbox" value="6">土</label><label class="wd"><input type="checkbox" value="0">日</label>
+    </div>
+  </div>
+  <div class="field" id="cRowMonth"><span>日にち</span>
+    <div class="radios">
+      <label><input type="radio" name="cMonth" value="dom"> 毎月 <input type="number" id="cDom" min="1" max="31" class="num"> 日</label>
+      <label><input type="radio" name="cMonth" value="nth"> 第 <select id="cNth" class="sel"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="-1">最終</option></select>
+        <select id="cNthDay" class="sel"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option><option value="0">日</option></select> 曜日</label>
+      <label><input type="radio" name="cMonth" value="end"> 月末</label>
+    </div>
+  </div>
+  <div class="field"><span>開始日</span><div class="chips"><input type="date" id="cStart"></div></div>
+  <div class="field"><span>終了</span>
+    <div class="radios">
+      <label><input type="radio" name="cEnd" value="never"> しない</label>
+      <label><input type="radio" name="cEnd" value="count"> <input type="number" id="cCount" min="1" max="999" class="num"> 回で終わる</label>
+      <label><input type="radio" name="cEnd" value="until"> <input type="date" id="cUntil"> まで</label>
+    </div>
+  </div>
+  <p class="csum" id="cSummary"></p>
+  <div class="dlg-foot">
+    <span class="spacer"></span>
+    <button type="button" class="btn" id="btnCustomCancel">キャンセル</button>
+    <button type="button" class="btn primary" id="btnCustomOk">OK</button>
+  </div>
+</dialog>
+
+<!-- v3.4 どうぐ（たからばこで手に入れた宝物） -->
+<dialog id="dlgItems" class="dlg wide">
+  <h2>どうぐ</h2>
+  <p class="hint">タスクを完了すると、たまに たからばこが みつかります（集めるだけ）。「もどす」と、そのとき手に入れた宝物も かえします。</p>
+  <p class="ihead" id="itemsHead"></p>
+  <div id="itemRows" class="items"></div>
+  <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn primary" data-close>閉じる</button></div>
+</dialog>
+
+<!-- v3.4 プロフィール（なまえ・しょくぎょう） -->
+<dialog id="dlgProfile" class="dlg">
+  <form method="dialog" id="profileForm">
+    <h2>ぼうけんしゃの プロフィール</h2>
+    <label class="field"><span>なまえ</span><input type="text" id="pName" maxlength="12" autocomplete="off"></label>
+    <div class="field"><span>しょくぎょう</span><div class="jobs" id="jobRow"></div></div>
+    <p class="hint">しょくぎょうで 絵と、ステータスの伸び方が かわります（レベル・けいけんちは そのまま）。PCとスマホで同じになります。</p>
+    <div class="dlg-foot">
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="btnProfileCancel">キャンセル</button>
+      <button type="submit" class="btn primary">けってい</button>
+    </div>
+  </form>
 </dialog>
 
 <script src="art.js"></script>
