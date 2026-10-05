@@ -186,7 +186,9 @@ function listen() {
     saveProfile(App.PROFILE);
   }, err => App.cloudStatus('error', err)));
   // どうぐ（v3.5.1：まだ0からやり直していなければ、サーバーの最新を確認してから1回だけリセット）
-  unsubs.push(onSnapshot(itemsRef(), snap => {
+  // ※ includeMetadataChanges：端末内の控え（キャッシュ）→ サーバーの最新、と切り替わったときにも呼ばれるようにする。
+  //    これが無いと、中身が同じなら最新版の通知が来ず、リセットが実行されなかった（v3.5.2 の不具合）
+  unsubs.push(onSnapshot(itemsRef(), { includeMetadataChanges: true }, snap => {
     if (!snap.exists()) return;
     const d = snap.data();
     if (!d.reset351) { if (!snap.metadata.fromCache) App.resetItems(); return; }

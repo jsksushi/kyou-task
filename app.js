@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.5.2';
+const APP_VERSION = '3.5.3';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
