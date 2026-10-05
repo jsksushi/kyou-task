@@ -670,6 +670,7 @@ function addItem(id, d) {
   if (window.Cloud && window.Cloud.setItem) window.Cloud.setItem(id, v);
 }
 // v3.5.1：道具を0からやり直す（1回だけ）。v3.4 の宝物から交換した道具は、もどしても返らなかったため
+// v3.9：本人の希望で、もう1回だけやり直す（sync.js の reset39）
 function resetItems() {
   ITEM_COUNTS = {}; ITEM_PAGE = 1;
   try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: {}, page: 1 })); } catch (e) {}

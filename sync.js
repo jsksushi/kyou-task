@@ -191,7 +191,8 @@ function listen() {
   unsubs.push(onSnapshot(itemsRef(), { includeMetadataChanges: true }, snap => {
     if (!snap.exists()) return;
     const d = snap.data();
-    if (!d.reset351) { if (!snap.metadata.fromCache) App.resetItems(); return; }
+    // v3.9：本人の希望で、もう1回だけ0からやり直す（reset39 が無ければ1回だけ）
+    if (!d.reset351 || !d.reset39) { if (!snap.metadata.fromCache) App.resetItems(); return; }
     App.setItems(d.counts || {}, d.page);
   }, err => App.cloudStatus('error', err)));
 }
@@ -202,17 +203,17 @@ function saveProfile(p) {
 // v3.5 どうぐの何ページめまで開いたか
 function setItemPage(n) {
   if (!user) return;
-  setDoc(itemsRef(), { page: n, reset351: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
+  setDoc(itemsRef(), { page: n, reset351: true, reset39: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
 // どうぐ：持っている＝1／返した＝0 をそのまま書く
 function setItem(id, v) {
   if (!user) return;
-  setDoc(itemsRef(), { counts: { [id]: v }, reset351: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
+  setDoc(itemsRef(), { counts: { [id]: v }, reset351: true, reset39: true }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
 // どうぐを0からやり直す（中身ごと置き換える）
 function resetItems() {
   if (!user) return;
-  setDoc(itemsRef(), { counts: {}, page: 1, reset351: true }).catch(err => App.cloudStatus('error', err));
+  setDoc(itemsRef(), { counts: {}, page: 1, reset351: true, reset39: true }).catch(err => App.cloudStatus('error', err));
 }
 // 完了したとき（+1）・もどしたとき（-1）。2台で同時に押しても数がずれない足し算で送る
 function addExp(d) {
