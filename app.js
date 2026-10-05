@@ -1186,7 +1186,12 @@ async function saveBackup(name, { ask = false, auto = false } = {}) {
 async function exportJSON(label) {
   const name = `kyou-task-backup${typeof label === 'string' ? '_' + label : ''}_${stamp()}.json`;
   const where = await saveBackup(name, { ask: typeof label !== 'string' });
-  if (typeof label !== 'string') showMsg(where === 'dir' ? `「${bkDir.name}」フォルダに セーブした！` : 'ダウンロードに セーブした！');
+  // v3.9 結果は「セーブ・アカウント」の窓の中に出す（上のメッセージだと窓の後ろに隠れてしまうため）。窓を閉じるまで消さない
+  if (typeof label !== 'string') {
+    const el = document.getElementById('bkDone');
+    el.innerHTML = `✔ ${where === 'dir' ? `「${esc(bkDir.name)}」フォルダに` : 'ダウンロードに'} セーブした！<br><span>${esc(name)}</span>`;
+    el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  }
   renderBackupInfo();
 }
 // 1日1回の自動バックアップ（PCでアプリを開いたとき）。許可がいるときは、ステータスの窓にボタンを出す
@@ -1483,7 +1488,7 @@ function bind() {
   document.getElementById('btnLists').onclick = () => { deletingList = null; renderListRows(); dlgLists.showModal(); };
   document.getElementById('btnRules').onclick = () => { renderRuleRows(); document.getElementById('dlgRules').showModal(); };
   document.getElementById('btnHistory').onclick = () => { histSel.clear(); renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
-  document.getElementById('btnBackup').onclick = () => document.getElementById('dlgBackup').showModal();
+  document.getElementById('btnBackup').onclick = () => { document.getElementById('bkDone').hidden = true; document.getElementById('dlgBackup').showModal(); };
   document.getElementById('btnItems').onclick = () => { invSel = 0; invPage = ITEM_PAGE > 1 && ITEMS.filter(i => i.p === 1).every(i => owned(i.id)) ? ITEM_PAGE : 1; renderItems(); document.getElementById('dlgItems').showModal(); };
   document.getElementById('itemRows').addEventListener('click', e => { const c = e.target.closest('[data-cell]'); if (c) { invSel = Number(c.dataset.cell); renderItems(); } });
   document.getElementById('invPages').addEventListener('click', e => { const b = e.target.closest('[data-page]'); if (b) { invPage = Number(b.dataset.page); invSel = 0; renderItems(); } });
@@ -1782,10 +1787,11 @@ document.getElementById('msgwrap').onclick = () => {
   if (!document.getElementById('msgOk').hidden) { try { localStorage.setItem('kyou-task-greeted', todayKey()); } catch (e) {} }
 };
 // v3.9 ヘッダーのキャラ・雲を動かす：小さな絵を重ねて、CSSのアニメーションで動かす（描き直さないので軽い）
-function renderStageFx(fx) {
-  const box = document.getElementById('stageFx'); if (!box || !fx) return;
+// v3.9 下の原っぱも同じしくみ（スライム＝ジャンプ、白いやつ＝モジモジ、コウモリ＝パタパタ）
+function renderStageFx(fx, boxId = 'stageFx', field = false) {
+  const box = document.getElementById(boxId); if (!box || !fx) return;
   box.innerHTML = '';
-  const kindOf = n => n === 'bat' ? 'flap' : n === 'blob' ? 'hop' : 'walk';
+  const kindOf = n => n === 'bat' ? 'flap' : n === 'blob' ? 'hop' : (field && n === 'ghost') ? 'wiggle' : 'walk';
   fx.actors.forEach((a, i) => {
     const wrap = document.createElement('div'), cv = document.createElement('canvas'), kind = kindOf(a.name);
     const m = Art.drawSheet(cv, a.name, a.u, kind);
@@ -1808,7 +1814,7 @@ function drawArt() {
     const cw = document.getElementById('calwin'), st = document.getElementById('stage');
     const reserve = cw && cw.offsetParent ? cw.getBoundingClientRect().right - st.getBoundingClientRect().left : 0;
     renderStageFx(Art.drawStage(st, { reserve, fx: true }));
-    Art.drawField(document.getElementById('field'));
+    renderStageFx(Art.drawField(document.getElementById('field'), { fx: true }), 'fieldFx', true);
     if (!document.getElementById('loginScreen').hidden) Art.drawHero(document.getElementById('loginHero'));
   } catch (e) { console.warn(e); }
 }

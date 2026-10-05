@@ -80,8 +80,12 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
   // opt.reserve：左からこの位置（px）までは「きょうの よてい」の窓が乗るので、キャラを置かない（v3.7）
   function drawStage(cv, opt = {}) {
     let w, h; [g, w, h] = prep(cv); const reserve = opt.reserve || 0; const gy = h - 40, wide = w >= 900, u = 3;
+    // v3.9：opt.fx のときは、キャラと雲は描かずに位置だけ返す（上に重ねた小さな絵をCSSで動かすため）
+    const fx = opt.fx ? { actors: [], clouds: [] } : null;
+    const put = (n, x, y) => fx ? fx.actors.push({ name: n, x, y, u }) : sprite(n, x, y, u);
+    const cl = (x, y, sc) => fx ? fx.clouds.push({ x, y, s: sc }) : cloud(x, y, sc);
     grad(0, 0, w, gy, '#3f6fd8', '#9cc8ff', 9);
-    cloud(w * 0.55, 18, 1.1); cloud(w * 0.78, 46, 0.8); if (wide) cloud(w * 0.36, 60, 0.7);
+    cl(w * 0.55, 18, 1.1); cl(w * 0.78, 46, 0.8); if (wide) cl(w * 0.36, 60, 0.7);
     sparkle(w * 0.5, 70, 3);
     for (let x = -40; x < w; x += wide ? 170 : 140) mountain(x, gy, wide ? 220 : 180, wide ? 78 : 60, '#5b6fa8', true);
     // v3.7：左に「きょうの よてい」、右上にプロフィールの窓が乗る。パーティ（4人）は必ず出し、
@@ -96,22 +100,25 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     for (let x = wide ? Math.max(w * 0.42, reserve + 10) : w * 0.55; x < (wide ? (showCastle ? cx - 14 : right) : w); x += 18) pine(x, gy - 30, 3);
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 4); P(0, gy - 4, w, 5, '#5BD15B'); P(0, gy + 16, w, 8, '#c8a060'); P(0, gy + 24, w, 3, '#9a7a40');
     if (wide) {
-      [['priest', 0], ['archer', 52], ['wizard', 104], ['knight', 156]].forEach(([n, dx]) => sprite(n, left + dx, gy + 20 - H(n) * u, u));
+      [['priest', 0], ['archer', 52], ['wizard', 104], ['knight', 156]].forEach(([n, dx]) => put(n, left + dx, gy + 20 - H(n) * u));
       g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', kx + 52, gy - 36); g.fillText('！', kx + 52, gy - 36);
       const mEnd = showCastle ? cx - 4 : right;               // モンスターはお城（またはプロフィールの窓）の手前に入るときだけ
-      if (kx + 70 + 36 <= mEnd) sprite('blob', kx + 70, gy + 20 - H('blob') * u, u);
-      if (kx + 100 + 42 <= mEnd) sprite('bat', kx + 100, gy - 48, u);
-    } else { sprite('knight', 40, gy + 20 - H('knight') * u, u); if (!reserve || reserve < 90) sprite('blob', 100, gy + 20 - H('blob') * u, u); }
+      if (kx + 70 + 36 <= mEnd) put('blob', kx + 70, gy + 20 - H('blob') * u);
+      if (kx + 100 + 42 <= mEnd) put('bat', kx + 100, gy - 48);
+    } else { put('knight', 40, gy + 20 - H('knight') * u); if (!reserve || reserve < 90) put('blob', 100, gy + 20 - H('blob') * u); }
     [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => { if (!reserve || x > reserve || x < 30) flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'); });
     word(26, 20, 'MY TASK', wide ? 7 : Math.max(2, Math.min(4, Math.floor((w - 220) / 42))));
+    return fx ? { ...fx, w, h } : null;
   }
   /* ---- 下のフィールド帯 ---- */
-  function drawField(cv) {
-    let w, h; [g, w, h] = prep(cv); const gy = h - 30;
+  // v3.9：opt.fx のときは、スライム・白いやつ・コウモリは描かずに位置だけ返す（宝箱・木・花はそのまま描く）
+  function drawField(cv, opt = {}) {
+    let w, h; [g, w, h] = prep(cv); const gy = h - 30; const actors = [];
     grad(0, 0, w, gy, '#2a3a8a', '#5b7fd8', 5); for (let x = 30; x < w; x += 90) P(x + (x * 7) % 40, (x * 13) % 40, 2, 2, '#fff');
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 3); P(0, gy - 3, w, 4, '#5BD15B');
     const cast = ['blob', 'ghost', 'chest', 'bat', 'blob', 'ghost']; let i = 0;
-    for (let x = 40; x < w - 40; x += 160) { const n = cast[i++ % cast.length]; sprite(n, x, n === 'bat' ? gy - 46 : gy - H(n) * 3 + 2, 3); pine(x + 80, gy - 26, 2); flower(x + 120, gy - 8, 2, '#F2A6C6'); }
+    for (let x = 40; x < w - 40; x += 160) { const n = cast[i++ % cast.length]; const y = n === 'bat' ? gy - 46 : gy - H(n) * 3 + 2; if (opt.fx && n !== 'chest') actors.push({ name: n, x, y, u: 3 }); else sprite(n, x, y, 3); pine(x + 80, gy - 26, 2); flower(x + 120, gy - 8, 2, '#F2A6C6'); }
+    return opt.fx ? { actors, clouds: [], w, h } : null;
   }
   /* ---- ログイン画面用：勇者1人 ---- */
   function drawHero(cv) { let w, h; [g, w, h] = prep(cv); sprite('knight', (w - 16 * 4) / 2, (h - 15 * 4) / 2, 4); }
@@ -235,5 +242,20 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     }
   }
 
-  return { drawStage, drawField, drawHero, drawChar, drawWalk, drawIcon, drawGet };
+  /* ---- v3.9 ヘッダーで動かす小さな絵（2コマを横に並べて描き、CSSで切り替える） ---- */
+  // コウモリの羽：外側（左右3列）を2ドット下げて、羽を下ろした絵にする
+  function flap(rows) {
+    const n = rows.length, wd = rows[0].length, out = rows.map(() => Array(wd).fill('.'));
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { const wing = x < 3 || x >= wd - 3; const ny = wing ? y + 2 : y; if (ny < n && ch !== '.') out[ny][x] = ch; }));
+    return out.map(r => r.join(''));
+  }
+  function drawSheet(cv, name, u, kind) {
+    const rows = SPR[name], pal = PAL[name], W = rows[0].length * u, Hh = rows.length * u + u;
+    const frames = kind === 'flap' ? [rows, flap(rows)] : kind === 'walk' ? [rows, bobUp(rows)] : [rows];
+    fit(cv, W * frames.length, Hh);
+    frames.forEach((fr, f) => fr.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(f * W + rx * u, u + ry * u, u, u, c); })));
+    return { W, H: Hh };
+  }
+  function drawCloud(cv, sc) { const uu = Math.max(3, Math.floor(7 * sc)); fit(cv, 8 * uu, 4 * uu); cloud(0, 0, sc); return { W: 8 * uu, H: 4 * uu }; }
+  return { drawStage, drawField, drawHero, drawChar, drawWalk, drawIcon, drawGet, drawSheet, drawCloud };
 })();

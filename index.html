@@ -64,7 +64,7 @@
 
 <nav class="tabs" id="tabs" hidden></nav>
 <main class="board" id="board"></main>
-<canvas id="field"></canvas>
+<div class="fieldwrap"><canvas id="field"></canvas><div class="stagefx" id="fieldFx"></div></div>
 
 <!-- メッセージ（クリアしたときなどに画面の上に出る） -->
 <div class="msgwrap" id="msgwrap"><section class="win msg"><span id="msg"></span><span class="cur">▼</span><button class="msgok" id="msgOk" hidden>▶ OK</button></section></div>
@@ -226,6 +226,7 @@
   <p class="hint" id="bkInfo"></p>
   <div class="stack">
     <button type="button" class="btn primary" id="btnExport">⬇ JSONで書き出す</button>
+    <p class="bkdone" id="bkDone" hidden></p>
     <label class="btn file">⬆ JSONを読み込む（今のデータは置き換わります）
       <input type="file" id="fileImport" accept="application/json,.json" hidden>
     </label>

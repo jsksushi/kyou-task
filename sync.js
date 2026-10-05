@@ -261,5 +261,11 @@ window.Cloud = {
   resetItems,
   setItemPage,
   login,
-  logout: () => { if (confirm('ログアウトします。よろしいですか？')) signOut(auth); },
+  // v3.9：ログアウトしたら、この端末の中の控え（タスクなど）も消す。クラウドのデータは残るので、ログインし直せば戻る
+  logout: async () => {
+    if (!confirm('ログアウトします。よろしいですか？\n（この端末の中の控えも消します。データはクラウドに残っているので、ログインし直せば戻ります）')) return;
+    try { stopListening(); await signOut(auth); } catch (e) { console.warn(e); }
+    App.wipeLocal();
+    location.reload();
+  },
 };

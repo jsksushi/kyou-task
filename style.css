@@ -103,7 +103,8 @@ summary{cursor:pointer}
 .memosave{margin-top:6px;width:100%}
 
 /* ---------- 下のフィールドとメッセージ ---------- */
-#field{height:92px;margin-top:10px}
+#field{height:92px}
+.fieldwrap{margin-top:10px}
 .msgwrap{position:fixed;top:14px;left:50%;transform:translate(-50%,-160%);width:min(720px,calc(100vw - 28px));z-index:40;transition:transform .25s steps(5)}
 .msgwrap.show{transform:translate(-50%,0)}
 .msg{padding:16px 20px;min-height:66px;font-size:16px;line-height:1.7;cursor:pointer}
@@ -347,9 +348,18 @@ input[type=checkbox]{accent-color:var(--gold)}
 .fxa.flap{animation:float 3s ease-in-out infinite}
 .fxa.hop canvas{width:100%!important;height:100%!important}
 .fxa.hop{animation:hop 2.4s infinite}
+/* v3.9 下の原っぱ：白いやつは ときどき モジモジ（左右に小さくゆれる） */
+.fieldwrap{position:relative}
+.fxa.wiggle{animation:wiggle 3.2s steps(1) infinite;animation-delay:var(--d)}
+@keyframes wiggle{0%,40%,100%{transform:translateX(0)}5%,15%,25%{transform:translateX(-2px)}10%,20%,30%{transform:translateX(2px)}}
 @keyframes float{50%{transform:translateY(-4px)}}
 @keyframes hop{0%,70%,100%{transform:translateY(0)}80%{transform:translateY(-4px)}90%{transform:translateY(-1px)}}
 .fxc{position:absolute;left:0;animation:drift var(--dur) linear infinite;animation-delay:var(--delay)}
 .fxc canvas{display:block;width:100%!important;height:100%!important;image-rendering:pixelated}
 @keyframes drift{from{transform:translateX(var(--from))}to{transform:translateX(var(--to))}}
 @media (prefers-reduced-motion:reduce){.fxa,.fxa canvas,.fxc{animation:none!important}}
+
+/* v3.9 書き出しの結果（セーブ・アカウントの窓の中） */
+.bkdone{margin:0;padding:6px 10px;border:2px solid var(--gold);border-radius:4px;color:var(--gold);font-size:13px;line-height:1.6}
+.bkdone span{color:#fff;font-size:12px;word-break:break-all}
+.bkdone.pop{animation:bl .4s steps(1) 3}
