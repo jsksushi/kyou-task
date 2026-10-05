@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -214,14 +214,28 @@ const ruleById = id => S.rules.find(r => r.id === id);
 
 /* ---------- 日次処理 ---------- */
 // 繰り返しタスクを「出てくる日」ごとに1件ずつ作る（やり残しも回ごとに残る）
+// v3.5：繰り返しは「親」（設定そのもの。元のリストに残る）と「分身」（その日の分。🔥今日に出る）に分けた。
+// 分身は clone:true。開始日以降で、対象の曜日・日付になった日に1件ずつ作る（やり残しは回ごとに残る）
+function migrateRuleTasks() {
+  // v3.4 までの「繰り返しのタスク自体が初回分を兼ねる」形を、親と分身の形にそろえる（何度呼んでも同じ結果）
+  const t = todayKey();
+  S.tasks = S.tasks.filter(x => {
+    if (!x.ruleId || x.clone) return true;
+    const r = ruleById(x.ruleId);
+    if (!r) { delete x.ruleId; return true; }
+    if (x.done || (x.due && x.due <= t)) { x.clone = true; return true; }   // もう出ている回 → 分身としてそのまま残す
+    // 先の日付・日付なしの回は、親が代わりに表示するので消す（その日が来たら分身が出る）
+    if (x.due && !r.start && ruleMatches(r, x.due)) r.start = x.due;
+    if (r.lastGenerated && r.lastGenerated >= t) r.lastGenerated = addDays(t, -1);
+    return false;
+  });
+}
 function generateRepeats() {
+  migrateRuleTasks();
   const t = todayKey();
   for (const r of S.rules) {
-    // v3.4：「次回分は作成済み」の印が未来の日付のまま残っていると、その日が飛ばされていた（曜日を変えたときなど）。
-    //        今日の分は必ず判定し直す（同じ日の分が2つにならないよう上でチェック）
+    // 「作成済み」の印が未来の日付のまま残っていたら、今日から判定し直す（古い設定は、印の日がルールに合っていれば開始日に）
     if (r.lastGenerated && r.lastGenerated > t) {
-      // 古い設定（開始日なし）：印の日がルールに合っていれば「初回の日」なので、それより前には出さない。
-      // 合っていない＝あとで曜日などを変えた → 今日から判定する
       if (!r.start && ruleMatches(r, r.lastGenerated)) r.start = r.lastGenerated;
       r.lastGenerated = addDays(t, -1);
     }
@@ -229,18 +243,23 @@ function generateRepeats() {
     let guard = 0;
     while (k <= t && guard++ < 400) {
       const gid = `${r.id}_${k}`;
-      // 同じ日の分がすでにある（最初の1件・別の端末で作った分・完了ずみ含む）なら作らない
+      // 同じ日の分がすでにある（別の端末で作った分・完了ずみ含む）なら作らない
       if (ruleMatches(r, k) && !taskById(gid) && !S.tasks.some(x => x.ruleId === r.id && x.due === k)) {
         genIds.add(gid);
         S.tasks.push({
-          id: gid, title: r.title, listId: r.listId, due: k, time: r.time || '',
-          memo: r.memo || '', ruleId: r.id, done: false, createdAt: Date.now(),
+          id: gid, title: r.title, listId: TODAY_ID, origListId: r.listId !== TODAY_ID ? r.listId : undefined, due: k, time: r.time || '',
+          memo: r.memo || '', ruleId: r.id, clone: true, done: false, createdAt: Date.now(),
         });
       }
       r.lastGenerated = k;
       k = addDays(k, 1);
     }
   }
+}
+// 親に出す「次は ◯」：今日の分がもう出ていれば明日以降から探す
+function nextOfRule(r) {
+  const t = todayKey();
+  return nextOccurrence(r, r.lastGenerated && r.lastGenerated >= t ? addDays(t, 1) : t);
 }
 // 期限が今日以前になった未完了タスクを「今日」へ自動移動
 function autoMoveToToday() {
@@ -327,6 +346,16 @@ function taskRow(x) {
     </div>${btn}</div>`;
 }
 
+// v3.5 繰り返しの「親」：元のリストにずっと残る。完了ボタンなし、押すと繰り返しの設定を編集
+function parentRow(r) {
+  const nx = nextOfRule(r);
+  return `<div class="item parent" data-rule="${r.id}">
+    <div class="body">
+      <div class="title">🔁 ${esc(r.title)}</div>
+      <div class="meta"><span class="tag">${ruleLabel(r)}${r.time ? ' ' + r.time + 'まで' : ''}</span><span class="next">${nx ? '次は ' + dueLabel(nx) : '（おわり）'}</span></div>
+      ${r.memo ? `<div class="tmemo">${linkify(r.memo)}</div>` : ''}
+    </div></div>`;
+}
 // リストの色（パステル）を、黒いウィンドウの上で読める明るい色にする
 function lightColor(hex) {
   try {
@@ -387,11 +416,13 @@ function render() {
       continue;
     }
     const open = S.tasks.filter(x => x.listId === L.id && !x.done).sort(sortTasks);
+    const parents = S.rules.filter(r => r.listId === L.id);
     const doneToday = S.tasks.filter(x => x.listId === L.id && x.done && x.doneDate === t)
       .sort((a, b) => (b.doneAt || 0) - (a.doneAt || 0));
     html.push(`<section class="col win ${L.id === TODAY_ID ? 'today' : ''} ${mobile && mobileTab === L.id ? 'active' : ''}" data-list="${L.id}" style="${frameStyle(L)}">
       <span class="ttl" style="color:${esc(lightColor(L.color))}">${mark(L.name, '◆')}${esc(L.name)}<span class="n">${open.length}</span></span>
-      ${open.map(taskRow).join('') || '<div class="empty">タスクは ない。</div>'}
+      ${parents.map(parentRow).join('')}
+      ${open.map(taskRow).join('') || (parents.length ? '' : '<div class="empty">タスクは ない。</div>')}
       <div class="addrow">
         <input class="add" data-add="${L.id}" enterkeyhint="done" placeholder="${mobile ? '＋ タスクを ついか' : '＋ タスクを ついか（Enter）'}">
         <button class="more" data-addmore="${L.id}" title="日時やメモを付けて追加">詳しく</button>
@@ -424,30 +455,32 @@ function completeTask(id) {
   const wasCounted = isCounted(x);
   x.done = true; x.doneAt = Date.now(); x.doneDate = todayKey();
   // たからばこ：たまに（約10%）宝物が手に入る。どのタスクで手に入れたかを覚えておく（もどしたら減らすため）
-  const item = Math.random() < TREASURE_RATE ? pickItem() : null;
+  const item = Math.random() < TREASURE_RATE ? pickItem() : null;   // 全部そろっていたら出ない
   if (item) x.loot = item.id;
   save(); render();
   const before = levelOf(EXP);
   addExp(1);
-  if (item) addItem(item.id, 1);
+  let pageOpened = false;
+  if (item) { addItem(item.id, 1); pageOpened = checkPageOpen(); }
   const left = S.tasks.filter(t => isCounted(t)).length;
   let m = `「${x.title}」を 完了した！ けいけんちを 1 かくとく！`;
   const after = levelOf(EXP);
   if (after > before) m += ` レベルが あがった！ Lv ${after} に なった！` + levelUpText(before, after);
-  if (item) m += ` …おや？ たからばこを みつけた！ ${item.icon}${item.name}（${RARITY[item.r].n}）を てにいれた！`;
+  if (item) m += ` …おや？ たからばこを みつけた！`;
   if (wasCounted) m += left ? ` きょうの のこりは ${left}つ。` : ' きょうの タスクを すべて 完了した！';
   showMsg(m);
+  if (item) showGet(item, pageOpened ? `どうぐの ${ITEM_PAGE}ページめが ひらいた！` : '');
 }
 function undoTask(id) {
   const x = taskById(id); if (!x) return;
   x.done = false; delete x.doneAt; delete x.doneDate;
-  const lost = x.loot && ITEMS.find(i => i.id === x.loot);
+  const lost = x.loot && itemById(x.loot);
   if (x.loot) { addItem(x.loot, -1); delete x.loot; }  // そのタスクで手に入れた宝物も返す
   if (!listById(x.listId)) x.listId = TODAY_ID;
   autoMoveToToday();
   save(); render();
   addExp(-1);
-  showMsg(`「${x.title}」が また あらわれた！` + (lost ? ` ${lost.icon}${lost.name} を かえした…` : ''));
+  showMsg(`「${x.title}」が また あらわれた！` + (lost ? ` ${lost.name} を かえした…` : ''));
 }
 
 /* ---------- けいけんち・レベル ---------- */
@@ -504,57 +537,152 @@ function renderProfile() {
   if (drawnJob !== sig && window.Art && Art.drawChar) { Art.drawChar($('pfHero'), PROFILE.job, u); drawnJob = sig; }
 }
 
-/* ---------- v3.4 たからばこ（集めるだけ。使う機能はなし） ---------- */
+/* ---------- v3.5 たからばこ・どうぐ（1種類1個。20個そろうと次のページが開く。集めるだけ） ---------- */
 const TREASURE_RATE = 0.1;
 const RARITY = { c: { n: 'ふつう', w: 60 }, r: { n: 'レア', w: 28 }, s: { n: 'すごくレア', w: 10 }, l: { n: 'でんせつ', w: 2 } };
 const ITEMS = [
-  { id: 'leaf', r: 'c', icon: '🌿', name: 'にがい はっぱ', d: 'かむと すこし めが さめる。' },
-  { id: 'onigiri', r: 'c', icon: '🍙', name: 'おにぎり', d: 'ひるやすみの みかた。' },
-  { id: 'stone', r: 'c', icon: '🪨', name: 'まるい いし', d: 'なんとなく ひろってしまった。' },
-  { id: 'feather', r: 'c', icon: '🪶', name: 'とりの はね', d: 'かるい。とても かるい。' },
-  { id: 'mushroom', r: 'c', icon: '🍄', name: 'ちいさな キノコ', d: 'たべないほうが いい きがする。' },
-  { id: 'screw', r: 'c', icon: '🔩', name: 'さびた ネジ', d: 'どこかの きかいの ぶひん。' },
-  { id: 'clip', r: 'c', icon: '📎', name: 'まがった クリップ', d: 'しょるいを ひとつに まとめた あかし。' },
-  { id: 'candy', r: 'c', icon: '🍬', name: 'あめだま', d: 'ゆうがたの エネルギー。' },
-  { id: 'key', r: 'r', icon: '🗝️', name: 'ふしぎな かぎ', d: 'どの とびらの かぎかは わからない。' },
-  { id: 'compass', r: 'r', icon: '🧭', name: 'まよわない コンパス', d: 'つぎに やることを ゆびさす。' },
-  { id: 'candle', r: 'r', icon: '🕯️', name: 'よるの ろうそく', d: 'ざんぎょうの おともに。' },
-  { id: 'coffee', r: 'r', icon: '☕', name: 'さめない コーヒー', d: 'いつまでも あたたかい。' },
-  { id: 'map', r: 'r', icon: '🗺️', name: 'ふるい ちず', d: 'てつづきの みちすじが かいてある。' },
-  { id: 'coin', r: 'r', icon: '🪙', name: 'きんいろの コイン', d: 'ぴかぴかに みがかれている。' },
-  { id: 'gem', r: 's', icon: '💎', name: 'そらいろの いし', d: 'のぞくと きもちが はれる。' },
-  { id: 'pen', r: 's', icon: '🖋️', name: 'しめきりの ペン', d: 'これで かくと しめきりに まにあう。' },
-  { id: 'hourglass', r: 's', icon: '⏳', name: 'とまる すなどけい', d: 'すこしだけ じかんが ゆっくりになる…きがする。' },
-  { id: 'bell', r: 's', icon: '🎐', name: 'かぜの すず', d: 'なると あたまが すっきりする。' },
-  { id: 'crown', r: 'l', icon: '👑', name: 'ていじの かんむり', d: 'もちぬしは かならず ていじに かえれるという。' },
-  { id: 'stamp', r: 'l', icon: '🌈', name: 'にじいろの ハンコ', d: 'おすと どんな しんせいも とおるという。' },
+  // ── 1ページ目 ──
+  { id: 't01', p: 1, r: 'c', shape: 'rod', name: 'しめきりのロッド', d: 'ふると しめきりが のびる。のびた ぶんだけ どこかで だれかの しめきりが ちぢむ。' },
+  { id: 't02', p: 1, r: 'c', shape: 'boomerang', name: 'さいそくブーメラン', d: 'なげても かえってこない。へんじも かえってこない。' },
+  { id: 't03', p: 1, r: 'c', shape: 'lamp', name: 'ていじのランプ', d: '17じ59ふんに ともる。18じ00ふんには もう きえている。' },
+  { id: 't04', p: 1, r: 'c', shape: 'scroll', name: 'メモのまきもの', d: 'なにか だいじなことが かいてある。なにを かいたかは かいてない。' },
+  { id: 't05', p: 1, r: 'c', shape: 'shieldNote', name: 'ふせんのたて', d: 'ふせんが 48まい はってある。うち 47まいは「あとで」。' },
+  { id: 't06', p: 1, r: 'c', shape: 'quill', name: 'ぎじろくのペン', d: 'かいぎの ないようを かきとめる。いつも「いぎなし」で おわっている。' },
+  { id: 't07', p: 1, r: 'c', shape: 'fishing', name: 'コピペのつりざお', d: 'さっき つった ぶんしょうが また つれる。' },
+  { id: 't08', p: 1, r: 'c', shape: 'bag', name: 'タスクのふくろ', d: 'なんでも はいる。いれたものは にどと でてこない。' },
+  { id: 't09', p: 1, r: 'r', shape: 'bell', name: 'リマインドのすず', d: 'ちょうど わすれた しゅんかんに なる。おもいだしたときには なりやんでいる。' },
+  { id: 't10', p: 1, r: 'r', shape: 'key', name: 'アクセスけんのかぎ', d: 'どの とびらも ひらく。ひらいた さきに また とびらが ある。' },
+  { id: 't11', p: 1, r: 'r', shape: 'boot', name: 'ショートカットのくつ', d: 'はくと 3ぽで つく。どこに つくかは えらべない。' },
+  { id: 't12', p: 1, r: 'r', shape: 'pick', name: 'かんすうのつるはし', d: 'ほればほるほど #REF! が でてくる。' },
+  { id: 't13', p: 1, r: 'r', shape: 'broom', name: 'せいりのほうき', d: 'デスクトップを はくと「新しいフォルダー (7)」が うまれる。' },
+  { id: 't14', p: 1, r: 'r', shape: 'compass', name: 'にっていのコンパス', d: 'つねに つぎの かいぎの ほうを さしている。かいぎしつは ない。' },
+  { id: 't15', p: 1, r: 's', shape: 'cape', name: 'ステルスマント', d: 'きると かいぎで あてられなくなる。カメラは オンのまま。' },
+  { id: 't16', p: 1, r: 's', shape: 'potion', name: 'ふっかつのくすり', d: 'けしたファイルが もどってくる。ファイルめいの さいごが「_コピー」になっている。' },
+  { id: 't17', p: 1, r: 's', shape: 'gear', name: 'じどうかのはぐるま', d: 'かってに まわりつづける。とめかたは だれも しらない。' },
+  { id: 't18', p: 1, r: 's', shape: 'helmet', name: 'しゅうちゅうのかぶと', d: 'かぶると なにも きこえない。ちいさく ちゃくしんおんだけ きこえる。' },
+  { id: 't19', p: 1, r: 'l', shape: 'crown', name: 'ていじのかんむり', d: 'もちぬしは かならず ていじに かえれる。いえに ついたら ゆうがただった。' },
+  { id: 't20', p: 1, r: 'l', shape: 'sword', name: 'しょうにんのつるぎ', d: 'ぬくと どんな しんせいも とおる。さやは かちょうが もっている。' },
+  // ── 2ページ目（1ページ目をコンプリートすると開く） ──
+  { id: 't21', p: 2, r: 'c', shape: 'flute', name: 'あいづちのふえ', d: 'ふくと「なるほどですね」と なる。なにが なるほどかは ふえも しらない。' },
+  { id: 't22', p: 2, r: 'c', shape: 'bow', name: 'てんぷのゆみや', d: 'あてさきに ファイルを とどける。てんぷは わすれる。' },
+  { id: 't23', p: 2, r: 'c', shape: 'torch', name: 'しりょうのたいまつ', d: 'しりょうの すみまで てらす。みたくない すうじも てらす。' },
+  { id: 't24', p: 2, r: 'c', shape: 'bottle', name: 'ほぞんのびん', d: 'さいごに ほぞんした きおくが はいっている。3じかんまえの もの。' },
+  { id: 't25', p: 2, r: 'c', shape: 'potion', name: 'カフェインのポーション', d: 'のむと 30ぷん はかどる。そのあと 30ぷん とおくを みる。', x: 'caffeine' },
+  { id: 't26', p: 2, r: 'c', shape: 'chain', name: 'まとめのくさり', d: 'ばらばらの しりょうを つなぐ。ほどけなくなった。' },
+  { id: 't27', p: 2, r: 'c', shape: 'tent', name: 'やすみのテント', d: 'ひろげると 5ふん やすめる。たたむのに 10ぷん かかる。' },
+  { id: 't28', p: 2, r: 'c', shape: 'map', name: 'てがきのちず', d: 'ほうこくしょへの みちが かいてある。とちゅうから にがおえに なっている。' },
+  { id: 't29', p: 2, r: 'r', shape: 'glasses', name: 'ほんやくのめがね', d: 'しようしょが よめるようになる。よんでも わからない。' },
+  { id: 't30', p: 2, r: 'r', shape: 'horn', name: 'アラームのつのぶえ', d: 'ならすと みんなが あつまる。だれも ようけんを しらない。' },
+  { id: 't31', p: 2, r: 'r', shape: 'stone', name: 'ひらめきのいし', d: 'にぎると いいあんが うかぶ。てを はなすと きえる。' },
+  { id: 't32', p: 2, r: 'r', shape: 'glove', name: 'ねまわしのてぶくろ', d: 'はめると だれよりも はやく じゅんびが おわる。かいぎは ちゅうしに なった。' },
+  { id: 't33', p: 2, r: 'r', shape: 'feather', name: 'いそぎのはね', d: 'つけると しりょうが いっしゅんで できる。ないようも いっしゅんぶん。' },
+  { id: 't34', p: 2, r: 'r', shape: 'shieldBack', name: 'バックアップのたて', d: 'どんな しっぱいも いちどだけ ふせぐ。いちどめは もう つかった。' },
+  { id: 't35', p: 2, r: 's', shape: 'flag', name: 'フラグのはた', d: 'たてた フラグは かならず かいしゅうされる。だいたい わるいほうの フラグ。' },
+  { id: 't36', p: 2, r: 's', shape: 'pot', name: 'みどくゼロのつぼ', d: 'メールを ぜんぶ すいこむ。つぼの なかは みどく 9999。' },
+  { id: 't37', p: 2, r: 's', shape: 'magnifier', name: 'デバッグのむしめがね', d: 'かくれた バグが みえる。みえるだけ。' },
+  { id: 't38', p: 2, r: 's', shape: 'hourglass', name: 'まきもどしのすなどけい', d: 'ひっくりかえすと ひとつまえに もどる。もどしすぎて げつようびに なった。' },
+  { id: 't39', p: 2, r: 'l', shape: 'book', name: 'ぜんちのほん', d: 'あらゆる しようが かいてある。さいごの ページに「※ただし ばあいによる」。' },
+  { id: 't40', p: 2, r: 'l', shape: 'wings', name: 'ゆうきゅうのつばさ', d: 'もちぬしは いつでも ゆうきゅうを とれる。つばさは ずっと しまったまま。' },
 ];
+const MAX_PAGE = Math.max(...ITEMS.map(i => i.p));
+const OLD_ITEM_IDS = ['leaf', 'onigiri', 'stone', 'feather', 'mushroom', 'screw', 'clip', 'candy', 'key', 'compass', 'candle', 'coffee', 'map', 'coin', 'gem', 'pen', 'hourglass', 'bell', 'crown', 'stamp']; // v3.4 の宝物
 const ITEMS_KEY = 'kyou-task-items';
-let ITEM_COUNTS = (() => { try { return JSON.parse(localStorage.getItem(ITEMS_KEY) || '{}') || {}; } catch (e) { return {}; } })();
+let ITEM_COUNTS = {}, ITEM_PAGE = 1;
+try { const o = JSON.parse(localStorage.getItem(ITEMS_KEY) || '{}') || {}; ITEM_COUNTS = o.counts || (o.page ? {} : o); ITEM_PAGE = Number(o.page) || 1; } catch (e) {}
+const owned = id => (Number(ITEM_COUNTS[id]) || 0) > 0;
+const itemById = id => ITEMS.find(i => i.id === id);
+// まだ持っていない道具（開いているページの中から）を、レア度の出やすさで1つ選ぶ。全部持っていたら null
 function pickItem() {
-  const tot = Object.values(RARITY).reduce((a, b) => a + b.w, 0);
-  let x = Math.random() * tot, rk = 'c';
-  for (const [k, v] of Object.entries(RARITY)) { if ((x -= v.w) < 0) { rk = k; break; } }
-  const pool = ITEMS.filter(i => i.r === rk);
+  const cand = ITEMS.filter(i => i.p <= ITEM_PAGE && !owned(i.id));
+  if (!cand.length) return null;
+  const rks = Object.keys(RARITY).filter(k => cand.some(i => i.r === k));
+  const tot = rks.reduce((a, k) => a + RARITY[k].w, 0);
+  let x = Math.random() * tot, rk = rks[0];
+  for (const k of rks) { if ((x -= RARITY[k].w) < 0) { rk = k; break; } }
+  const pool = cand.filter(i => i.r === rk);
   return pool[Math.floor(Math.random() * pool.length)];
 }
-function setItems(counts) {
+let migratingItems = false;
+function setItems(counts, page, fromCloud) {
   ITEM_COUNTS = { ...(counts || {}) };
-  try { localStorage.setItem(ITEMS_KEY, JSON.stringify(ITEM_COUNTS)); } catch (e) {}
+  if (page !== undefined) ITEM_PAGE = Math.min(MAX_PAGE, Math.max(Number(page) || 1, ITEM_PAGE));   // 一度開いたページは閉じない
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: ITEM_COUNTS, page: ITEM_PAGE })); } catch (e) {}
+  // v3.4 の宝物（絵文字）を持っていたら、持っていた種類の数だけ新しい道具に交換する（1回だけ）
+  const old = OLD_ITEM_IDS.filter(id => (Number(ITEM_COUNTS[id]) || 0) > 0);
+  if (old.length && !migratingItems) {
+    migratingItems = true;
+    for (const id of old) {
+      addItem(id, -(Number(ITEM_COUNTS[id]) || 0));
+      const it = pickItem(); if (it) { addItem(it.id, 1); checkPageOpen(); }
+    }
+    migratingItems = false;
+  }
   if (document.getElementById('dlgItems').open) renderItems();
 }
 function addItem(id, d) {
-  setItems({ ...ITEM_COUNTS, [id]: Math.max(0, (ITEM_COUNTS[id] || 0) + d) });
+  ITEM_COUNTS = { ...ITEM_COUNTS, [id]: Math.max(0, (Number(ITEM_COUNTS[id]) || 0) + d) };
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: ITEM_COUNTS, page: ITEM_PAGE })); } catch (e) {}
   if (window.Cloud && window.Cloud.addItem) window.Cloud.addItem(id, d);
 }
-function renderItems() {
-  const n = id => Math.max(0, Number(ITEM_COUNTS[id]) || 0);
-  const got = ITEMS.filter(i => n(i.id) > 0).length;
-  document.getElementById('itemsHead').textContent = `あつめた しゅるい ${got} / ${ITEMS.length}`;
-  document.getElementById('itemRows').innerHTML = ITEMS.map(i => n(i.id) > 0
-    ? `<div class="itm r-${i.r}"><span class="ic">${i.icon}</span><div class="t"><b>${esc(i.name)}</b> <span class="cnt">×${n(i.id)}</span><div class="s"><span class="rk">${RARITY[i.r].n}</span> ${esc(i.d)}</div></div></div>`
-    : `<div class="itm none"><span class="ic">？</span><div class="t">？？？<div class="s"><span class="rk">${RARITY[i.r].n}</span></div></div></div>`).join('');
+// 今のページが全部そろったら、次のページを開く（一度開いたら閉じない）。開いたら true
+function checkPageOpen() {
+  if (ITEM_PAGE >= MAX_PAGE) return false;
+  if (!ITEMS.filter(i => i.p === ITEM_PAGE).every(i => owned(i.id))) return false;
+  ITEM_PAGE++;
+  try { localStorage.setItem(ITEMS_KEY, JSON.stringify({ counts: ITEM_COUNTS, page: ITEM_PAGE })); } catch (e) {}
+  if (window.Cloud && window.Cloud.setItemPage) window.Cloud.setItemPage(ITEM_PAGE);
+  return true;
 }
+
+/* どうぐ画面：マス目に並べて、カーソルで選ぶと横に名前と説明 */
+let invPage = 1, invSel = 0;
+function renderItems() {
+  const $ = id => document.getElementById(id);
+  invPage = Math.min(invPage, ITEM_PAGE);
+  const items = ITEMS.filter(i => i.p === invPage);
+  const got = ITEMS.filter(i => owned(i.id)).length;
+  $('itemsHead').textContent = `あつめた どうぐ ${got} / ${ITEMS.length}`;
+  $('invPages').innerHTML = Array.from({ length: MAX_PAGE }, (_, i) => i + 1).map(p => p <= ITEM_PAGE
+    ? `<button type="button" class="pg ${p === invPage ? 'on' : ''}" data-page="${p}">${p}</button>`
+    : `<span class="pg lock" title="${p - 1}ページめを ぜんぶ あつめると ひらく">？</span>`).join('');
+  $('itemRows').innerHTML = items.map((it, i) => `<button type="button" class="cell ${i === invSel ? 'sel' : ''} ${owned(it.id) ? '' : 'empty'}" data-cell="${i}" aria-label="${owned(it.id) ? esc(it.name) : 'まだ ない'}">${owned(it.id) ? `<canvas data-icon="${it.id}"></canvas>` : ''}</button>`).join('');
+  $('itemRows').querySelectorAll('[data-icon]').forEach(cv => { const it = itemById(cv.dataset.icon); try { Art.drawIcon(cv, it.shape, 3, it.x); } catch (e) {} });
+  const it = items[invSel];
+  if (it && owned(it.id)) {
+    $('invName').textContent = it.name;
+    $('invRare').textContent = RARITY[it.r].n;
+    $('invRare').className = 'rk r-' + it.r;
+    $('invDesc').textContent = it.d;
+    try { Art.drawIcon($('invBig'), it.shape, 5, it.x); } catch (e) {}
+    $('invBig').hidden = false;
+  } else {
+    $('invName').textContent = '？？？';
+    $('invRare').textContent = it ? RARITY[it.r].n : '';
+    $('invRare').className = 'rk' + (it ? ' r-' + it.r : '');
+    $('invDesc').textContent = 'まだ みつけていない。';
+    $('invBig').hidden = true;
+  }
+}
+
+/* 宝箱を開けたときの演出（宝箱が開いて、勇者が道具を頭の上に掲げる） */
+let getTimer, getRaf;
+function showGet(it, extra) {
+  const wrap = document.getElementById('getwrap'), cv = document.getElementById('getCv'), txt = document.getElementById('getTxt');
+  clearTimeout(getTimer); cancelAnimationFrame(getRaf);
+  wrap.hidden = false; txt.textContent = '';
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const DUR = 1600, t0 = performance.now();
+  const step = now => {
+    const t = still ? 1 : Math.min(1, (now - t0) / DUR);
+    try { Art.drawGet(cv, PROFILE.job, it.shape, t, it.x); } catch (e) {}
+    if (t >= 0.75 && !txt.textContent) txt.innerHTML = `${esc(it.name)} を てにいれた！<small>${RARITY[it.r].n}　${esc(it.d)}</small>${extra ? `<b>${esc(extra)}</b>` : ''}`;
+    if (t < 1 || now - t0 < DUR + 1200) getRaf = requestAnimationFrame(step);
+  };
+  getRaf = requestAnimationFrame(step);
+  getTimer = setTimeout(hideGet, 6500);
+}
+function hideGet() { clearTimeout(getTimer); cancelAnimationFrame(getRaf); document.getElementById('getwrap').hidden = true; }
+
 function setExp(v) { EXP = Math.max(0, Number(v) || 0); try { localStorage.setItem('kyou-task-exp', EXP); } catch (e) {} renderLevel(); }
 function addExp(d) { setExp(EXP + d); if (window.Cloud && window.Cloud.addExp) window.Cloud.addExp(d); }
 
@@ -666,8 +794,8 @@ function repeatChanged() {
   document.getElementById('rowWeekdays').hidden = v !== 'weekly';
   document.getElementById('rowDom').hidden = v !== 'monthly';
   const hint = document.getElementById('repeatHint');
-  if (editing && editing.mode === 'rule') hint.textContent = '「なし」にして保存すると、この繰り返し設定を削除します（出てきているタスクは残ります）。';
-  else if (v) hint.textContent = '設定した日になると自動でタスクが出てきます。やり残した回は赤字で残ります。';
+  if (editing && editing.mode === 'rule') hint.textContent = '「なし」にして保存すると、この繰り返し（親）を削除します。今日に出ている分はそのまま残ります。';
+  else if (v) hint.textContent = '親（🔁）はこのリストに残り、設定した日になると その日の分が「🔥 今日」に出てきます。完了しても繰り返しは続きます。やり残した回は赤字で残ります。';
   else hint.textContent = '';
 }
 function readRepeat() {
@@ -682,24 +810,32 @@ function readRepeat() {
 function openTaskDialog(mode, id, listId, presetTitle) {
   editing = { mode, id, listId };
   const titleEl = document.getElementById('taskDlgTitle');
-  const rowDue = document.getElementById('rowDue');
   document.getElementById('btnTaskDelete').hidden = mode === 'new';
-  rowDue.hidden = mode === 'rule';
+  document.getElementById('rowRepeat').hidden = false;
+  document.getElementById('cloneNote').hidden = true;
   if (mode === 'task') {
     const x = taskById(id);
     const r = x.ruleId && ruleById(x.ruleId);
-    titleEl.textContent = 'タスクを編集';
+    titleEl.textContent = r ? '今回ぶんを編集' : 'タスクを編集';
     document.getElementById('fTitle').value = x.title;
     fillListSelect(document.getElementById('fList'), x.listId);
     setDue(x.due || ''); setTime(x.time || '');
-    setRepeatUI(r ? r.type : '', r ? r.days : [], r ? r.dom : null, r);
+    setRepeatUI('', [], null);
+    if (r) {
+      // 分身：繰り返しの設定は親で変える
+      document.getElementById('rowRepeat').hidden = true;
+      const L = listById(r.listId);
+      document.getElementById('cloneNoteText').textContent = `繰り返し「${r.title}」（${ruleLabel(r)}）の今回ぶんです。完了しても繰り返しは続きます。曜日などの設定は${L ? `「${L.name}」にある` : ''}親（🔁）で変えられます。`;
+      document.getElementById('btnOpenParent').dataset.rule = r.id;
+      document.getElementById('cloneNote').hidden = false;
+    }
     document.getElementById('fMemo').value = x.memo || '';
   } else if (mode === 'rule') {
     const r = ruleById(id);
-    titleEl.textContent = '繰り返し設定を編集';
+    titleEl.textContent = '繰り返しの設定（親）を編集';
     document.getElementById('fTitle').value = r.title;
     fillListSelect(document.getElementById('fList'), r.listId);
-    setDue(''); setTime(r.time || '');
+    setDue(r.start || ''); setTime(r.time || '');
     setRepeatUI(r.type, r.days, r.dom, r);
     document.getElementById('fMemo').value = r.memo || '';
   } else {
@@ -714,6 +850,8 @@ function openTaskDialog(mode, id, listId, presetTitle) {
   dlgTask.showModal();
   document.getElementById('fTitle').focus();
 }
+// 編集中のものが「繰り返しの親（設定）」になりうるか（分身の編集では繰り返しは触らない）
+const editingIsParent = () => editing && (editing.mode !== 'task' || !(taskById(editing.id) || {}).ruleId);
 
 function saveTaskDialog() {
   const title = document.getElementById('fTitle').value.trim();
@@ -721,23 +859,40 @@ function saveTaskDialog() {
   const listId = document.getElementById('fList').value;
   const time = fTimeVal;
   const memo = document.getElementById('fMemo').value;
-  const rep = readRepeat();
+  const rep = editingIsParent() ? readRepeat() : null;
   if (rep && rep.type === 'weekly' && rep.days.length === 0) { alert('毎週の曜日を1つ以上選んでください'); return false; }
   const t = todayKey();
+  const start = fDueVal || (rep && rep.type === 'custom' ? rep.start : '') || '';
 
+  // 親（繰り返しの設定）を編集
   if (editing.mode === 'rule') {
     const r = ruleById(editing.id);
     if (!rep) {
-      if (!confirm('この繰り返し設定を削除します。よろしいですか？\n（すでに出ているタスクは残ります）')) return false;
+      if (!confirm('この繰り返し設定を削除します。よろしいですか？\n（すでに今日に出ている分は残ります）')) return false;
       S.rules = S.rules.filter(z => z.id !== r.id);
       S.tasks.forEach(x => { if (x.ruleId === r.id) delete x.ruleId; });
     } else {
-      updateRule(r, { title, listId, time, memo, ...rep });
-      // まだ完了していない今後分（今日以降の未完了）にも反映
+      updateRule(r, { title, listId, time, memo, ...rep, start: start || undefined });
+      if (!start) delete r.start;
+      // まだ完了していない今日以降の分身にも反映
       S.tasks.forEach(x => { if (x.ruleId === r.id && !x.done && x.due >= t) { x.title = title; x.time = time; x.memo = memo; } });
     }
     generateRepeats(); autoMoveToToday();
     save(); render(); return true;
+  }
+
+  const x0 = editing.mode === 'task' ? taskById(editing.id) : null;
+  // 新しく繰り返しを作る（新規、または普通のタスクに繰り返しを付けた）→ 親を作る。分身は対象の日に🔥今日へ出る
+  if (rep) {
+    const home = listId === TODAY_ID && x0 && x0.origListId && listById(x0.origListId) ? x0.origListId : listId;
+    const r = { id: uid(), title, listId: home, time, memo, ...rep, start: start || t, lastGenerated: addDays(t, -1) };
+    S.rules.push(r);
+    if (x0) S.tasks = S.tasks.filter(z => z.id !== x0.id);   // 元のタスクは親になる
+    generateRepeats(); autoMoveToToday();
+    save(); render();
+    const nx = nextOfRule(r), todayOne = S.tasks.some(z => z.ruleId === r.id && z.due === t);
+    showMsg(`くりかえし「${title}」を せっていした！ ` + (todayOne ? 'きょうの ぶんが あらわれた！' : nx ? `つぎは ${dueLabel(nx)} に あらわれる。` : ''));
+    return true;
   }
 
   let x;
@@ -745,7 +900,7 @@ function saveTaskDialog() {
     x = { id: uid(), title, listId, due: '', time: '', memo: '', done: false, createdAt: Date.now() };
     S.tasks.push(x);
   } else {
-    x = taskById(editing.id);
+    x = x0;
   }
   const prevList = x.listId, prevDue = x.due;
   x.title = title; x.time = time; x.memo = memo; x.due = fDueVal;
@@ -755,27 +910,6 @@ function saveTaskDialog() {
   // 「今日」に自動移動されていたタスクの期限を先に延ばしたら、元のリストへ戻す
   if (x.listId === TODAY_ID && x.origListId && x.due && x.due > t && listById(x.origListId)) {
     x.listId = x.origListId; delete x.origListId;
-  }
-
-  // 繰り返し設定
-  const cur = x.ruleId && ruleById(x.ruleId);
-  if (rep && cur) {
-    updateRule(cur, { title, listId: x.listId === TODAY_ID && x.origListId ? x.origListId : x.listId, time, memo, ...rep });
-  } else if (rep && !cur) {
-    const home = x.listId === TODAY_ID && x.origListId && listById(x.origListId) ? x.origListId : x.listId;
-    const r = { id: uid(), title, listId: home, time, memo, ...rep };
-    // このタスクを初回分にする：期限がルールに合わなければ次の該当日にそろえる
-    let base = x.due || t;
-    if (r.type === 'custom' && r.start > base) base = r.start;
-    x.due = ruleMatches(r, base) ? base : (nextOccurrence(r, base) || base);
-    r.start = r.type === 'custom' ? (r.start || x.due) : x.due;   // 開始日（これより前には出さない）
-    r.lastGenerated = x.due < t ? t : x.due;
-    x.ruleId = r.id;
-    S.rules.push(r);
-  } else if (!rep && cur) {
-    if (!confirm('繰り返しを止めます。このタスクは通常のタスクとして残ります。よろしいですか？')) return false;
-    S.rules = S.rules.filter(z => z.id !== cur.id);
-    S.tasks.forEach(z => { if (z.ruleId === cur.id) delete z.ruleId; });
   }
   generateRepeats();
   autoMoveToToday();
@@ -794,7 +928,7 @@ function updateRule(r, next) {
 /* ---------- v3.4 カスタムの繰り返し（Google Keep のリマインダー風） ---------- */
 const dlgCustom = document.getElementById('dlgCustom');
 function defaultCustom() {
-  const st = (editing && editing.mode !== 'rule' && fDueVal) || todayKey(), d = parseKey(st);
+  const st = fDueVal || todayKey(), d = parseKey(st);
   return { interval: 1, unit: 'week', days: [d.getDay()], monthMode: 'dom', dom: d.getDate(), nth: Math.min(4, Math.ceil(d.getDate() / 7)), nthDay: d.getDay(), start: st, endMode: 'never', count: 10, until: addDays(st, 30) };
 }
 function openCustomDialog() {
@@ -896,7 +1030,7 @@ function renderRuleRows() {
   const t = todayKey();
   box.innerHTML = S.rules.map(r => {
     const L = listById(r.listId);
-    const next = nextOccurrence(r, addDays(r.lastGenerated && r.lastGenerated < t ? r.lastGenerated : addDays(t, -1), 1));
+    const next = nextOfRule(r);
     return `<div class="hrow">
       <span class="dot" style="background:${L ? esc(L.color) : '#ccc'}"></span>
       <div class="t">${esc(r.title)}<div class="s">🔁 ${ruleLabel(r)}${r.time ? ' ' + r.time + 'まで' : ''}／${L ? esc(L.name) : ''}／${next ? '次回 ' + dueLabel(next) : '（終了）'}</div></div>
@@ -981,6 +1115,7 @@ function bind() {
     if (el.dataset.done) return completeTask(el.dataset.done);
     if (el.dataset.undo) return undoTask(el.dataset.undo);
     if (el.dataset.edit) return openTaskDialog('task', el.dataset.edit);
+    const pr = el.closest('[data-rule]'); if (pr) return openTaskDialog('rule', pr.dataset.rule);
     if (el.dataset.addmore) {
       const inp = board.querySelector(`[data-add="${el.dataset.addmore}"]`);
       const v = inp ? inp.value : '';
@@ -1052,8 +1187,7 @@ function bind() {
   // タスクダイアログ
   // 新しく作るカスタム繰り返しは「開始日」欄とカスタムの開始日をそろえる
   const dueToStart = () => {
-    const cur = editing && editing.mode === 'task' && taskById(editing.id);
-    if (customDraft && !(cur && cur.ruleId) && editing.mode !== 'rule') { customDraft.start = fDueVal || todayKey(); syncCustomOption(); }
+    if (customDraft && editingIsParent()) { customDraft.start = fDueVal || todayKey(); syncCustomOption(); }
   };
   document.querySelectorAll('[data-due]').forEach(b => b.onclick = () => {
     const t = todayKey();
@@ -1067,8 +1201,7 @@ function bind() {
   document.getElementById('btnCustomOk').onclick = () => {
     customDraft = readCustom();
     if (customDraft.endMode === 'until' && customDraft.until < customDraft.start) { alert('終了日は開始日より後にしてください'); return; }
-    const cur = editing && editing.mode === 'task' && taskById(editing.id);
-    if (editing.mode !== 'rule' && !(cur && cur.ruleId)) setDue(customDraft.start);
+    if (editingIsParent()) setDue(customDraft.start);
     syncCustomOption();
     document.getElementById('fRepeat').value = 'custom';
     dlgCustom.close('ok');
@@ -1084,15 +1217,16 @@ function bind() {
   document.getElementById('fRepeat').onchange = repeatChanged;
   document.getElementById('taskForm').onsubmit = e => { e.preventDefault(); if (saveTaskDialog()) dlgTask.close(); };
   document.getElementById('btnTaskCancel').onclick = () => dlgTask.close();
+  document.getElementById('btnOpenParent').onclick = e => { const id = e.target.dataset.rule; dlgTask.close(); if (ruleById(id)) openTaskDialog('rule', id); };
   document.getElementById('btnTaskDelete').onclick = () => {
     if (editing.mode === 'rule') {
-      if (!confirm('この繰り返し設定を削除します。よろしいですか？\n（すでに出ているタスクは残ります）')) return;
+      if (!confirm('この繰り返し設定（親）を削除します。よろしいですか？\n（すでに今日に出ている分は残ります）')) return;
       S.rules = S.rules.filter(r => r.id !== editing.id);
       S.tasks.forEach(x => { if (x.ruleId === editing.id) delete x.ruleId; });
       save(); render(); renderRuleRows(); dlgTask.close(); return;
     }
     const x = taskById(editing.id);
-    if (!confirm(`「${x.title}」を削除します。よろしいですか？${x.ruleId ? '\n（今回分のみ削除。繰り返し設定は残ります）' : ''}`)) return;
+    if (!confirm(`「${x.title}」を削除します。よろしいですか？${x.ruleId ? '\n（今回ぶんだけ削除。繰り返しの親は残ります）' : ''}`)) return;
     S.tasks = S.tasks.filter(z => z.id !== x.id);
     save(); render(); dlgTask.close();
   };
@@ -1124,7 +1258,17 @@ function bind() {
   document.getElementById('btnRules').onclick = () => { renderRuleRows(); document.getElementById('dlgRules').showModal(); };
   document.getElementById('btnHistory').onclick = () => { histSel.clear(); renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
   document.getElementById('btnBackup').onclick = () => document.getElementById('dlgBackup').showModal();
-  document.getElementById('btnItems').onclick = () => { renderItems(); document.getElementById('dlgItems').showModal(); };
+  document.getElementById('btnItems').onclick = () => { invSel = 0; invPage = ITEM_PAGE > 1 && ITEMS.filter(i => i.p === 1).every(i => owned(i.id)) ? ITEM_PAGE : 1; renderItems(); document.getElementById('dlgItems').showModal(); };
+  document.getElementById('itemRows').addEventListener('click', e => { const c = e.target.closest('[data-cell]'); if (c) { invSel = Number(c.dataset.cell); renderItems(); } });
+  document.getElementById('invPages').addEventListener('click', e => { const b = e.target.closest('[data-page]'); if (b) { invPage = Number(b.dataset.page); invSel = 0; renderItems(); } });
+  // 矢印キーでカーソルを動かす（5列×4段）
+  document.getElementById('dlgItems').addEventListener('keydown', e => {
+    const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5 }[e.key]; if (mv === undefined) return;
+    e.preventDefault(); const n = ITEMS.filter(i => i.p === invPage).length;
+    invSel = (invSel + mv + n) % n; renderItems();
+    const c = document.querySelector(`#itemRows [data-cell="${invSel}"]`); if (c) c.focus();
+  });
+  document.getElementById('getwrap').onclick = hideGet;
   // プロフィール（なまえ・しょくぎょう）
   const dlgProfile = document.getElementById('dlgProfile');
   let pickJob = 'knight';
@@ -1301,7 +1445,7 @@ window.App = {
   get EXP() { return EXP; },
   setProfile: p => setProfile(p, true),
   get PROFILE() { return PROFILE; },
-  setItems,
+  setItems: (c, p) => setItems(c, p, true),
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;

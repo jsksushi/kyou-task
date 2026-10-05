@@ -106,7 +106,8 @@
         <input type="time" id="fTime">
       </div>
     </div>
-    <div class="field">
+    <p class="clonenote" id="cloneNote" hidden><span id="cloneNoteText"></span> <button type="button" class="btn small" id="btnOpenParent">親をひらく</button></p>
+    <div class="field" id="rowRepeat">
       <span>繰り返し</span>
       <div>
         <select id="fRepeat">
@@ -258,14 +259,27 @@
   </div>
 </dialog>
 
-<!-- v3.4 どうぐ（たからばこで手に入れた宝物） -->
-<dialog id="dlgItems" class="dlg wide">
-  <h2>どうぐ</h2>
-  <p class="hint">タスクを完了すると、たまに たからばこが みつかります（集めるだけ）。「もどす」と、そのとき手に入れた宝物も かえします。</p>
-  <p class="ihead" id="itemsHead"></p>
-  <div id="itemRows" class="items"></div>
-  <div class="dlg-foot"><span class="spacer"></span><button type="button" class="btn primary" data-close>閉じる</button></div>
+<!-- v3.5 どうぐ（たからばこで手に入れた道具。マス目に並べて、選ぶと横に説明） -->
+<dialog id="dlgItems" class="dlg wide inv">
+  <div class="invwrap">
+    <section class="win invgrid">
+      <span class="ttl">どうぐ</span>
+      <div class="pages" id="invPages"></div>
+      <div class="grid" id="itemRows"></div>
+    </section>
+    <section class="win invinfo">
+      <span class="ttl" id="invName">？？？</span>
+      <canvas id="invBig" hidden></canvas>
+      <span class="rk" id="invRare"></span>
+      <p id="invDesc"></p>
+    </section>
+  </div>
+  <p class="hint">タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。</p>
+  <div class="dlg-foot"><span class="ihead" id="itemsHead"></span><span class="spacer"></span><button type="button" class="btn primary" data-close>閉じる</button></div>
 </dialog>
+
+<!-- v3.5 宝箱を開けたときの演出 -->
+<div class="getwrap" id="getwrap" hidden><section class="win getbox"><canvas id="getCv"></canvas><p id="getTxt"></p></section></div>
 
 <!-- v3.4 プロフィール（なまえ・しょくぎょう） -->
 <dialog id="dlgProfile" class="dlg">

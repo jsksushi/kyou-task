@@ -58,7 +58,7 @@ const colRef = c => collection(db, 'users', user.uid, c);
 const metaRef = () => doc(db, 'users', user.uid, 'meta', 'info');
 const statsRef = () => doc(db, 'users', user.uid, 'meta', 'stats');   // けいけんち（exp）
 const profileRef = () => doc(db, 'users', user.uid, 'meta', 'profile'); // v3.4 なまえ・しょくぎょう
-const itemsRef = () => doc(db, 'users', user.uid, 'meta', 'items');     // v3.4 たからばこの宝物 { counts: {アイテムID: 個数} }
+const itemsRef = () => doc(db, 'users', user.uid, 'meta', 'items');     // たからばこの道具 { counts: {アイテムID: 0か1}, page: 開いたページ数 }
 
 async function commitOps(ops) {
   for (let i = 0; i < ops.length; i += 400) {
@@ -187,12 +187,17 @@ function listen() {
   }, err => App.cloudStatus('error', err)));
   // v3.4 宝物
   unsubs.push(onSnapshot(itemsRef(), snap => {
-    if (snap.exists()) App.setItems(snap.data().counts || {});
+    if (snap.exists()) App.setItems(snap.data().counts || {}, snap.data().page);
   }, err => App.cloudStatus('error', err)));
 }
 function saveProfile(p) {
   if (!user) return;
   setDoc(profileRef(), { name: p.name, job: p.job }, { merge: true }).catch(err => App.cloudStatus('error', err));
+}
+// v3.5 どうぐの何ページめまで開いたか
+function setItemPage(n) {
+  if (!user) return;
+  setDoc(itemsRef(), { page: n }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
 // 宝物の数：2台で同時に操作しても数がずれない足し算で送る
 function addItem(id, d) {
@@ -243,6 +248,7 @@ window.Cloud = {
   addExp,
   saveProfile,
   addItem,
+  setItemPage,
   login,
   logout: () => { if (confirm('ログアウトします。よろしいですか？')) signOut(auth); },
 };

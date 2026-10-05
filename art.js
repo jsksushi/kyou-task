@@ -31,6 +31,7 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     bat: ['kk..........kk', 'kpk..kkkk..kpk', 'kppkkppppkkppk', 'kpppeppppepppk', '.kppppwwppppk.', '..kpkppppkpk..', '...k.kkkk.k...'],
     ghost: ['...kkkkkk...', '..kwwwwwwk..', '.kwwwwwwwwk.', 'kwwewwwwewwk', 'kwwwwwwwwwwk', 'kwwwwmmwwwwk', 'kwwwwwwwwwwk', 'kwwwwwwwwwwk', 'kwkwwkkwwkwk', '.k.kk..kk.k.'],
     chest: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kbyybbbbyybk', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
+    chestOpen: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk', '.kwyyyyyywk.', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
   };
   const PAL = {
     knight: { k: K, x: '#E8EEF8', g: '#C79A00', h: '#8a4a20', b: '#D23B3B', s: '#F6D2B0', e: K, w: '#F4F4F4', c: '#3A6FD8', R: '#C79A00', S: '#3A6FD8', f: '#5a4030' },
@@ -45,6 +46,7 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     bat: { k: K, p: '#8a5ad0', e: '#FCD000', w: '#ffffff' },
     ghost: { k: K, w: '#EAF2FF', e: K, m: '#7a7aa0' },
     chest: { k: K, b: '#B5673A', y: '#FCD000' },
+    chestOpen: { k: K, b: '#B5673A', y: '#FCD000', w: '#fffbe0' },
   };
   function sprite(name, x, y, u = 3) { const rows = SPR[name], pal = PAL[name]; rows.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(x + rx * u, y + ry * u, u, u, c); })); }
   const H = n => SPR[n].length;
@@ -113,5 +115,102 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, Hh);
     sprite(name, 0, Hh - H(name) * u, u);
   }
-  return { drawStage, drawField, drawHero, drawChar };
+  /* ---- v3.5 どうぐのアイコン（12x12。冒険の道具っぽい見た目のオリジナル） ---- */
+  const IC = {
+    rod: ['........kkk.', '.......kyyyk', '.......kywyk', '.......kyyyk', '.......nkkk.', '......nk....', '.....nk.....', '....nk......', '...nk.......', '..nk........', '.nk.........', '.k..........'],
+    boomerang: ['..kkkk......', '.kbbbbk.....', '.kbwbbbk....', '..kkbbbbk...', '....kbbbbk..', '.....kbbbk..', '....kbbbbk..', '...kbbbbk...', '..kbbbbk....', '.kbwbbk.....', '.kbbbk......', '..kkk.......'],
+    lamp: ['.....kk.....', '....k..k....', '...kkkkkk...', '..kyyyyyyk..', '..kyywwyyk..', '..kywwwwyk..', '..kyywwyyk..', '..kyyyyyyk..', '...kkkkkk...', '..kggggggk..', '.kggggggggk.', '.kkkkkkkkkk.'],
+    scroll: ['.kkkkkkkkkk.', 'knkwwwwwwknk', 'knkwwwwwwknk', '.kwkkkkkkwk.', '.kwwwwwwwwk.', '.kwkkkkkwwk.', '.kwwwwwwwwk.', '.kwkkkkkkwk.', '.kwwwwwwwwk.', 'knkwwwwwwknk', 'knkwwwwwwknk', '.kkkkkkkkkk.'],
+    shieldNote: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kbyyybbbbbbk', 'kbyyybbyyybk', 'kbbbbbbyyybk', 'kbbbbbbbbbbk', 'kbbyyybbbbbk', '.kbyyybbbbk.', '.kbbbbbbbbk.', '..kbbbbbbk..', '...kbbbbk...', '....kkkk....'],
+    quill: ['.........kkk', '........kwwk', '.......kwwwk', '......kwwwk.', '.....kwwwk..', '....kwwwk...', '...kwwwk....', '...kwwk.....', '..kgkk......', '..kgk.......', '.kgk........', '.kk.........'],
+    fishing: ['kk..........', 'knk.........', '.knk.....k..', '..knk....k..', '...knk...k..', '....knk..k..', '.....knk.k..', '......knkk..', '.......kkk..', '........kwk.', '........kwk.', '.........k..'],
+    bag: ['....kkkk....', '...kyyyyk...', '....kkkk....', '...knnnnk...', '..knnnnnnk..', '.knnnnnnnnk.', '.knnnyynnnk.', '.knnnyynnnk.', '.knnnnnnnnk.', '.knnnnnnnnk.', '..knnnnnnk..', '...kkkkkk...'],
+    bell: ['.....kk.....', '....kyyk....', '...kyyyyk...', '...kywyyk...', '..kyywyyyk..', '..kyywyyyk..', '..kyyyyyyk..', '.kyyyyyyyyk.', '.kkkkkkkkkk.', '.....kk.....', '....kyyk....', '.....kk.....'],
+    key: ['............', '............', '.kkk........', 'kyyyk.......', 'kykykkkkkkk.', 'kyyyyyyyyyyk', 'kykykkkkykyk', 'kyyyk...kkk.', '.kkk........', '............', '............', '............'],
+    boot: ['............', '...kkkkk....', '...krrrk....', '...krwrk....', '...krrrk....', '...krrrk....', '...krrrrkk..', '...krrrrrrk.', '..krrrrrrrrk', '..kwwwwwwwwk', '..kkkkkkkkkk', '............'],
+    pick: ['............', '..kkkkkkkk..', '.kssssssssk.', 'ksskknnkkssk', '.kk.knnk.kk.', '....knnk....', '....knnk....', '....knnk....', '....knnk....', '....knnk....', '....knnk....', '....kkkk....'],
+    broom: ['.........kk.', '........knk.', '.......knk..', '......knk...', '.....knk....', '....knk.....', '...kkkk.....', '..kyyyyk....', '.kyyyyyk....', 'kyyyyyk.....', 'kyyyyk......', 'kkkkk.......'],
+    compass: ['...kkkkkk...', '..kwwwwwwk..', '.kwwwrwwwwk.', 'kwwwwrrwwwwk', 'kwwwwrrwwwwk', 'kwwwwkkwwwwk', 'kwwwwbbwwwwk', 'kwwwwbbwwwwk', '.kwwwbwwwwk.', '..kwwwwwwk..', '...kkkkkk...', '............'],
+    cape: ['...kkkkkk...', '..kmmmmmmk..', '.kmmkkkkmmk.', '.kmmmmmmmmk.', 'kmmmmmmmmmmk', 'kmmmmmmmmmmk', 'kmmmmmmmmmmk', 'kmmmmmmmmmmk', 'kmMmmMmmMmmk', 'kMMkMMkMMkMk', 'kk.kk.kk.kkk', '............'],
+    potion: ['....kkkk....', '....knnk....', '.....kk.....', '....kwwk....', '...kwppwk...', '..kwppppwk..', '.kpwppppppk.', '.kppppppppk.', '.kppppppppk.', '..kppppppk..', '...kkkkkk...', '............'],
+    gear: ['.....kk.....', '..k.kssk.k..', '.kskssssksk.', '..kssssssk..', '.ksssskssskk', 'kssskwwkssk.', '.ksskwwksssk', 'kksssksssk..', '..kssssssk..', '.kskssssksk.', '..k.kssk.k..', '.....kk.....'],
+    helmet: ['.....kk.....', '....krrk....', '..kkkkkkkk..', '.kswssssssk.', 'kswssssssssk', 'kssssssssssk', 'kskkkkkkkksk', 'kskbbkkbbksk', 'kssssssssssk', '.kssskksssk.', '..kkk..kkk..', '............'],
+    crown: ['............', 'k....kk....k', 'kk..kyyk..kk', 'kyk.kyyk.kyk', 'kyykyyyykyyk', 'kyyyyryyyyyk', 'kyyyrrryyyyk', 'kyyyyryyyyyk', 'kyyyyyyyyyyk', 'kkkkkkkkkkkk', '............', '............'],
+    sword: ['..........kk', '.........kwk', '........kwwk', '.......kwwk.', '......kwwk..', '.....kwwk...', '..k.kwwk....', '..kkkwk.....', '...kyk......', '..kgkkk.....', '.kgk..k.....', '.kk.........'],
+    flute: ['............', '............', '............', '............', 'kkkkkkkkkkkk', 'knnknnknnknk', 'knnnnnnnnnnk', 'kkkkkkkkkkkk', '............', '............', '............', '............'],
+    bow: ['kkk.........', 'knnk........', '.knnk.......', '.kk.nk......', '.k...nk..kk.', '.kssssssskwk', '.k....nk.kk.', '.k...nk.....', '.kk.nk......', '.knnk.......', 'knnk........', 'kkk.........'],
+    torch: ['....k..k....', '...krkkrk...', '...krryrk...', '..kryyyrk...', '..kryyyrk...', '...kryrk....', '....kkkk....', '....knnk....', '....knnk....', '....knnk....', '....knnk....', '....kkkk....'],
+    bottle: ['....kkkk....', '....knnk....', '.....kk.....', '....kwwk....', '...kwbbwk...', '..kwbbbbwk..', '.kbwbbbbbbk.', '.kbbbbwbbbk.', '.kbbbbbbbbk.', '..kbbbbbbk..', '...kkkkkk...', '............'],
+    chain: ['............', 'kkkk........', 'kssk........', 'kskkkk......', 'kkkssk......', '..ksskkk....', '..kkkssk....', '....kskkkk..', '....kkkssk..', '......kssk..', '......kkkk..', '............'],
+    tent: ['............', '.....kk.....', '....kgck....', '...kggcck...', '..kgggccck..', '.kggggcccck.', '.kgggkkccck.', 'kgggk..kccck', 'kggk....kcck', 'kkkk....kkkk', '............', '............'],
+    map: ['.kkkkkkkkkk.', 'kttttttttttk', 'ktbbttttkttk', 'ktbbbttkkttk', 'kttbbtttttk.', 'kttttkttttk.', '.ktttkttrtk.', '.kttttktrrtk', '.ktttttkttk.', 'kttttttttttk', 'kttttttttttk', '.kkkkkkkkkk.'],
+    glasses: ['............', '............', '............', '.kkkk..kkkk.', 'kbbbbkkbbbbk', 'kbwbbk.kbwbk', 'kbbbbk.kbbbk', '.kkkk...kkk.', '............', '............', '............', '............'],
+    horn: ['...........k', '..........kk', '.........kwk', '........kwwk', '......kkwwk.', '....kkyywk..', '..kkyyyyk...', '.kyyyyykk...', 'knyyykk.....', 'knnkk.......', '.kk.........', '............'],
+    stone: ['............', '....kkkk....', '...kwbbbk...', '..kwbbbbbk..', '.kwbbbbbbbk.', '.kbbbbbbbbk.', '.kbbbbbbbbk.', '.kbbbbbbbck.', '..kbbbbbck..', '...kbbcck...', '....kkkk....', '............'],
+    glove: ['...k.k.k....', '..kskskskk..', '..kskskskk..', '..kssssssk..', '..kssssssk.k', '..ksssssssk.', '..kssssssk..', '..kssssssk..', '..kssssssk..', '..kbbbbbbk..', '..kbbbbbbk..', '..kkkkkkkk..'],
+    feather: ['..........kk', '........kkwk', '.......kwwwk', '......kwwwk.', '.....kwwwwk.', '....kwwwwk..', '...kwwwwk...', '..kwwwwk....', '..kwwkk.....', '.kkkk.......', '.k..........', 'k...........'],
+    shieldBack: ['.kkkkkkkkkk.', 'kggggggggggk', 'kggggwwggggk', 'kgggwwwwgggk', 'kggggwwggggk', 'kgwwwwwwwwgk', 'kggggwwggggk', '.kgggwwgggk.', '.kggggggggk.', '..kggggggk..', '...kggggk...', '....kkkk....'],
+    flag: ['kk..........', 'krkkkkk.....', 'krrrrrrkk...', 'krrrrrrrrk..', 'krrrrrrkk...', 'krkkkkk.....', 'kk..........', 'kk..........', 'kk..........', 'kk..........', 'kk..........', 'kk..........'],
+    pot: ['............', '...kkkkkk...', '..kmmmmmmk..', '...kkkkkk...', '..kmmmmmmk..', '.kmmmmmmmmk.', 'kmmwmmmmmmmk', 'kmmmmmmmmmmk', 'kmmmmmmmmmmk', '.kmmmmmmmmk.', '..kkkkkkkk..', '............'],
+    magnifier: ['..kkkk......', '.kwbbbk.....', 'kwbbbbbk....', 'kbbbbbbk....', 'kbbbbbbk....', 'kbbbbbbk....', '.kbbbbk.....', '..kkkkkk....', '......knk...', '.......knk..', '........knk.', '.........kk.'],
+    hourglass: ['kkkkkkkkkkkk', '.knnnnnnnnk.', '..kyyyyyyk..', '...kyyyyk...', '....kyyk....', '.....kk.....', '.....kk.....', '....kwyk....', '...kwwyyk...', '..kwyyyyyk..', '.knnnnnnnnk.', 'kkkkkkkkkkkk'],
+    book: ['.kkkkkkkkkk.', 'krrrrrrrrrwk', 'krryyyyyrrwk', 'krryrrryrrwk', 'krryyyyyrrwk', 'krrrrrrrrrwk', 'krrrrrrrrrwk', 'krrrrrrrrrwk', 'krrrrrrrrrwk', 'krrrrrrrrrwk', 'kkkkkkkkkkkk', '............'],
+    wings: ['............', 'kk........kk', 'kwk......kwk', 'kwwk....kwwk', 'kwwwk..kwwwk', 'kwwwwkkwwwwk', '.kwwwkkwwwk.', '.kwwk..kwwk.', '..kwk..kwk..', '...k....k...', '............', '............'],
+  };
+  // アイコンの形 → 色
+  const ICP = {
+    rod: { y: '#c05cff', w: '#ffffff', n: '#8a5a2a' }, boomerang: { b: '#3a9be8', w: '#bfe4ff' }, lamp: { y: '#ffd84a', w: '#fffbe0', g: '#9a7a40' },
+    scroll: { w: '#f4ecd0', n: '#b5673a' }, shieldNote: { b: '#3a6fd8', y: '#ffe14a' }, quill: { w: '#ffffff', g: '#c79a00' },
+    fishing: { n: '#8a5a2a', w: '#ffffff' }, bag: { n: '#b5673a', y: '#ffd84a' }, bell: { y: '#ffd84a', w: '#ffffff' },
+    key: { y: '#ffd84a' }, boot: { r: '#c84c0c', w: '#e8d0a0' }, pick: { s: '#c8d0e0', n: '#8a5a2a' }, broom: { n: '#8a5a2a', y: '#e8c050' },
+    compass: { w: '#f4f4f4', r: '#e23b3b', b: '#3a6fd8' }, cape: { m: '#7b4fc9', M: '#4a2d86' }, potion: { n: '#8a5a2a', w: '#ffffff', p: '#5bd15b' },
+    gear: { s: '#a8b0c0', w: '#e8eef8' }, helmet: { r: '#e23b3b', s: '#c8d0e0', w: '#ffffff', b: '#1a1030' }, crown: { y: '#ffd84a', r: '#e23b3b' },
+    sword: { w: '#e8eef8', y: '#ffd84a', g: '#3a6fd8' }, flute: { n: '#c08040' }, bow: { n: '#8a5a2a', s: '#c8d0e0', w: '#ffffff' },
+    torch: { r: '#ff7a1a', y: '#ffe14a', n: '#8a5a2a' }, bottle: { n: '#8a5a2a', w: '#ffffff', b: '#8ecbff' }, chain: { s: '#c8d0e0' },
+    tent: { g: '#3ea34a', c: '#2f8f3a' }, map: { t: '#e8d0a0', b: '#3a9be8', r: '#e23b3b' }, glasses: { b: '#8ecbff', w: '#ffffff' },
+    horn: { y: '#e8c050', w: '#fff4c2', n: '#8a5a2a' }, stone: { b: '#9ad8f5', w: '#ffffff', c: '#5a9ac0' }, glove: { s: '#f6d2b0', b: '#c84c0c' },
+    feather: { w: '#ffffff' }, shieldBack: { g: '#2f8f3a', w: '#ffffff' }, flag: { r: '#e23b3b' }, pot: { m: '#c87050', w: '#ffd0b0' },
+    magnifier: { w: '#ffffff', b: '#bfe4ff', n: '#8a5a2a' }, hourglass: { n: '#8a5a2a', y: '#ffe14a', w: '#fff4c2' }, book: { r: '#7b2d2d', y: '#ffd84a', w: '#f4ecd0' },
+    wings: { w: '#ffffff' },
+  };
+  // 同じ形でも色ちがいにしたいもの（アイテムIDごとの上書き）
+  const ICX = { caffeine: { p: '#8a4a20', w: '#e8c8a0' } };
+  function icon(shape, x, y, u, over) {
+    const rows = IC[shape]; if (!rows) return;
+    const pal = { k: K, ...(ICP[shape] || {}), ...(over || {}) };
+    rows.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(x + rx * u, y + ry * u, u, u, c); }));
+  }
+  function fit(cv, W, Hh) {
+    const d = window.devicePixelRatio || 1;
+    cv.width = W * d; cv.height = Hh * d; cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+    g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, Hh);
+  }
+  // どうぐ画面のマス用：アイコン1つ
+  function drawIcon(cv, shape, u = 3, itemId) { fit(cv, 12 * u, 12 * u); icon(shape, 0, 0, u, ICX[itemId]); }
+  // 宝箱を開けて掲げる演出（t：0〜1の進み具合）
+  function drawGet(cv, job, shape, t, itemId) {
+    const u = 4, W = 200, Hh = 150; fit(cv, W, Hh);
+    if (!SPR[job]) job = 'knight';
+    const base = Hh - 14;
+    P(0, base, W, 14, '#2f8f3a'); P(0, base, W, 3, '#5BD15B');
+    const cx = 116, open = t > 0.25;
+    sprite(open ? 'chestOpen' : 'chest', cx, base - H(open ? 'chestOpen' : 'chest') * 3, 3);
+    const hx = 40, hy = base - H(job) * u;
+    sprite(job, hx, hy, u);
+    if (t > 0.35) {
+      // 宝箱から飛び出して、勇者の頭の上へ
+      const p = Math.min(1, (t - 0.35) / 0.35), ease = 1 - (1 - p) * (1 - p);
+      const sx = cx + 6, sy = base - 30, ex = hx + 8 * u - 18, ey = hy - 40;
+      const ix = sx + (ex - sx) * ease, iy = sy + (ey - sy) * ease - Math.sin(p * Math.PI) * 26;
+      if (p >= 1) { // 掲げている：キラキラ
+        const tw = Math.floor(t * 12) % 2;
+        sparkle(ex - 14, ey - 6 + tw * 2, 2, '#FCD000'); sparkle(ex + 34, ey + 4 - tw * 2, 2, '#ffffff');
+        // 両手を上げているように、頭の両わきに手を描く
+        P(hx + 3 * u, hy - 2 * u, 2 * u, 2 * u, '#F6D2B0'); P(hx + 11 * u, hy - 2 * u, 2 * u, 2 * u, '#F6D2B0');
+      }
+      icon(shape, ix, iy, 3, ICX[itemId]);
+    }
+  }
+
+  return { drawStage, drawField, drawHero, drawChar, drawIcon, drawGet };
 })();
