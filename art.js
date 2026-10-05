@@ -17,8 +17,8 @@ window.Art = (() => {
 
   /* ---- キャラ・モンスター（1文字＝1ドット、パレットで色付け） ---- */
   const SPR = {
-    // ▼ v3.1〜 メインのパーティ（2頭身・太い輪郭。ドット絵素材サイトの雰囲気に寄せたオリジナル）
-knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk...",".kxk.ksessesk...",".kxk.kssssssk...","kgggk.kkkkkk....",".kgk.kwccccwkkkk",".kskkwccccwkRSRk","..kwwccccwwkRSRk","..kswwwwwwskRRRk","...kcccccck.kkk.","...kcck.kcck....","...kffk.kffk....","...kkkk.kkkk...."],
+    // ▼ v3.1〜 メインのパーティ（v3.7.1：騎士は頭と体の位置をそろえて、斜めに見えないよう描き直し）（2頭身・太い輪郭。ドット絵素材サイトの雰囲気に寄せたオリジナル）
+knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk....",".kxkksessesk....",".kxkkssssssk....","kgggkkkkkkkk....",".kgkkwccccwkkkkk",".kskkwccccwkRSRk","....kwccccwkRSRk","....kswwwwskRRRk","....kcccccck.kkk","....kcckkcck....","....kffkkffk....","....kkkkkkkk...."],
  wizard:[".......kk.......","......kmmk...kok",".....kmmmmk..kok","....kmmmmmmk..n.","kmmmMMMMMMmmmkn.",".kkkkkkkkkkkk.n.","...ksessesk...n.","...kwwwwwwk...n.","..kmwwwwwwmk.ksk",".kmmmwwwwmmmkkn.",".kmmmmwwmmmmk.n.",".kmmmmmmmmmmk.n.","kmmmmmmmmmmmmkn.","kkkkkkkkkkkkkkn.","...kf...kf....n."],
  priest:[".....kkkkkk.....","....khhhhhhk....","...kcccyyccck...","...khsssssshk...","...khsesseshk...","...khsssssshk...","..khhksssskhhk..","..khkwwgwwwkhk..","..khwwwgwwwwhk..","..kswwwgwwwwsk..","..kwwwwgwwwwwk..",".kwwwwwgwwwwwwk.",".kggggggggggggk.",".kkkkkkkkkkkkkk.","....kf....kf...."],
  archer:["......kkkk......",".....khhhhk.....","..k.khhhhhhk....",".knkhhhhhhhhk...",".kntkhsesseHk...","kn.tkhssssshk...","kn.tkkkkkkkkk...","kn.tkcccccccck..","knttscccccccsk..","kn.tkccyyccck...",".knt.kccccck....","..k..kcckcck....",".....kffkffk....",".....kkkkkkk...."],
@@ -84,18 +84,23 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     cloud(w * 0.55, 18, 1.1); cloud(w * 0.78, 46, 0.8); if (wide) cloud(w * 0.36, 60, 0.7);
     sparkle(w * 0.5, 70, 3);
     for (let x = -40; x < w; x += wide ? 170 : 140) mountain(x, gy, wide ? 220 : 180, wide ? 78 : 60, '#5b6fa8', true);
-    // v3.4：右上にプロフィールの窓が乗るので、お城は窓に隠れないよう左へ寄せる
-    const cx = Math.max(w * 0.40 + 200, w - 380);
-    if (wide && cx > reserve + 10) castle(cx, gy, 4);   // 予定の窓に重なるときは描かない
-    for (let x = wide ? Math.max(w * 0.42, reserve + 10) : w * 0.55; x < (wide ? cx - 14 : w); x += 18) pine(x, gy - 30, 3);
+    // v3.7：左に「きょうの よてい」、右上にプロフィールの窓が乗る。パーティ（4人）は必ず出し、
+    //       予定の窓のすぐ右から並べる。お城とモンスターは、残りの場所に入るときだけ描く
+    const right = w - 250;                                   // ここから右はプロフィールの窓
+    const left = reserve ? reserve + 12 : w * 0.40 - 168;     // 僧侶の位置
+    const kx = left + 156;                                   // 騎士の位置（4人の右はし）
+    let cx = Math.max(w * 0.40 + 200, w - 380);
+    if (reserve) cx = Math.max(cx, kx + 48 + 90);            // パーティ＋モンスターの右へ
+    const showCastle = wide && cx + 88 <= right + 40;
+    if (showCastle) castle(cx, gy, 4);
+    for (let x = wide ? Math.max(w * 0.42, reserve + 10) : w * 0.55; x < (wide ? (showCastle ? cx - 14 : right) : w); x += 18) pine(x, gy - 30, 3);
     grad(0, gy, w, h - gy, '#3EA34A', '#1F6E2C', 4); P(0, gy - 4, w, 5, '#5BD15B'); P(0, gy + 16, w, 8, '#c8a060'); P(0, gy + 24, w, 3, '#9a7a40');
     if (wide) {
-      // v3.7：パーティはお城の手前（右寄せ）。予定の窓と重なるキャラは描かない
-      const px0 = reserve ? cx - 20 - 192 : w * 0.40;
-      const ok = x => x >= reserve + 8;
-      [['knight', 0], ['wizard', -56], ['archer', -112], ['priest', -168], ['blob', 110]].forEach(([n, dx]) => { if (ok(px0 + dx)) sprite(n, px0 + dx, gy + 20 - H(n) * u, u); });
-      if (ok(px0 + 150)) sprite('bat', px0 + 150, gy - 48, u);
-      if (ok(px0)) { g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', px0 + 52, gy - 36); g.fillText('！', px0 + 52, gy - 36); }
+      [['priest', 0], ['archer', 52], ['wizard', 104], ['knight', 156]].forEach(([n, dx]) => sprite(n, left + dx, gy + 20 - H(n) * u, u));
+      g.font = '14px "DotGothic16",monospace'; g.fillStyle = '#fff'; g.strokeStyle = K; g.lineWidth = 3; g.strokeText('！', kx + 52, gy - 36); g.fillText('！', kx + 52, gy - 36);
+      const mEnd = showCastle ? cx - 4 : right;               // モンスターはお城（またはプロフィールの窓）の手前に入るときだけ
+      if (kx + 70 + 36 <= mEnd) sprite('blob', kx + 70, gy + 20 - H('blob') * u, u);
+      if (kx + 100 + 42 <= mEnd) sprite('bat', kx + 100, gy - 48, u);
     } else { sprite('knight', 40, gy + 20 - H('knight') * u, u); if (!reserve || reserve < 90) sprite('blob', 100, gy + 20 - H('blob') * u, u); }
     [w * 0.08, w * 0.2, w * 0.3].forEach((x, i) => { if (!reserve || x > reserve || x < 30) flower(x, gy - 10, 3, i % 2 ? '#F2A6C6' : '#FCD000'); });
     word(26, 20, 'MY TASK', wide ? 7 : Math.max(2, Math.min(4, Math.floor((w - 220) / 42))));
@@ -118,15 +123,11 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W, Hh);
     sprite(name, 0, Hh - H(name) * u, u);
   }
-  /* ---- v3.5.1 プロフィール用：その場で歩く2コマ（左足を上げた絵／右足を上げた絵を横に並べて描く。CSSで切り替える） ---- */
-  function liftFoot(rows, left) {
-    const n = rows.length, w = rows[0].length, out = rows.map(r => [...r]);
-    const inHalf = c => (left ? c < w / 2 : c >= w / 2);
-    for (let c = 0; c < w; c++) {
-      if (!inHalf(c)) continue;
-      out[n - 3][c] = rows[n - 2][c]; out[n - 2][c] = rows[n - 1][c]; out[n - 1][c] = '.';
-    }
-    return out.map(r => r.join(''));
+  /* ---- プロフィール用：その場で歩く2コマ（ふつうの絵／体を1ドット上げた絵を横に並べて描く。CSSで切り替える） ---- */
+  // v3.7.1：片足だけ上げると体が斜めに見えたので、「体を1ドット上げて、足は地面に残す」上下の動きにした（左右対称）
+  function bobUp(rows) {
+    const n = rows.length;
+    return rows.slice(1, n - 2).concat([rows[n - 3], rows[n - 2], rows[n - 1]]);
   }
   function drawWalk(cv, name, u = 3) {
     if (!SPR[name]) name = 'knight';
@@ -134,7 +135,7 @@ knight:["..k....kkkk.....",".kxk..khhhhk....",".kxk.khhhhhhk...",".kxk.kbbbbbbk.
     cv.width = W * 2 * d; cv.height = Hh * d; cv.style.width = W * 2 + 'px'; cv.style.height = Hh + 'px';
     g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0); g.imageSmoothingEnabled = false; g.clearRect(0, 0, W * 2, Hh);
     const pal = PAL[name], top = Hh - H(name) * u;
-    [liftFoot(SPR[name], true), liftFoot(SPR[name], false)].forEach((rows, f) =>
+    [SPR[name], bobUp(SPR[name])].forEach((rows, f) =>
       rows.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(f * W + rx * u, top + ry * u, u, u, c); })));
   }
   /* ---- v3.5 どうぐのアイコン（12x12。冒険の道具っぽい見た目のオリジナル） ---- */
