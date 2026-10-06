@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.9.1';
+const APP_VERSION = '3.9.2';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -1256,6 +1256,23 @@ function renderBackupInfo() {
   const st = document.getElementById('bkPending');
   if (st) st.hidden = !bkPending;
 }
+// v3.9.2「JSONを読み込む」：バックアップ先フォルダを選んであれば、そのフォルダを最初に開いた状態でファイルを選ぶ
+//   ・フォルダ未設定／showOpenFilePicker が使えない（iPhone など）ときは、今までどおりの選択画面（input type=file）
+//   ・id は渡さない（念のため。id を渡すとブラウザが覚えた前回の場所が使われる可能性があるので）
+const canOpenInDir = () => canPickDir() && 'showOpenFilePicker' in window && !!bkDir;
+async function pickImportFile() {
+  try {
+    const [h] = await window.showOpenFilePicker({
+      startIn: bkDir, multiple: false, excludeAcceptAllOption: false,
+      types: [{ description: 'きょうのタスクのバックアップ（JSON）', accept: { 'application/json': ['.json'] } }],
+    });
+    if (h) importJSON(await h.getFile());
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;                 // キャンセル
+    console.warn(e);
+    document.getElementById('fileImport').click();             // フォルダが消えた等で開けないときは、今までどおりの選択画面
+  }
+}
 function importJSON(file) {
   const fr = new FileReader();
   fr.onload = async () => {
@@ -1631,6 +1648,11 @@ function bind() {
   document.addEventListener('click', async e => {
     if (e.target.closest('[data-bkpick]')) { if (await bkPickDir()) autoBackup(true); }
     if (e.target.closest('#bkPending')) autoBackup(true);
+  });
+  // v3.9.2 読み込みボタン（label）を押したとき、フォルダから開けるならそちらで開く
+  document.getElementById('fileImport').closest('label').addEventListener('click', e => {
+    if (e.target.id === 'fileImport' || !canOpenInDir()) return;   // 今までどおり（input のクリックはそのまま通す）
+    e.preventDefault(); pickImportFile();
   });
   document.getElementById('fileImport').onchange = e => { if (e.target.files[0]) importJSON(e.target.files[0]); e.target.value = ''; };
 
