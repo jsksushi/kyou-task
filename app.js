@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.1';
+const APP_VERSION = '4.0.2';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -715,6 +715,7 @@ let invPage = 1, invSel = 0, invMode = 'items';   // v4.0 invMode：items（ど�
 const ITEMS_HINT = 'タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。';
 function renderItems() {
   const $ = id => document.getElementById(id);
+  document.getElementById('dlgItems').classList.toggle('zk', invMode === 'zukan');   // v4.0.2 図鑑はマスの背景を紫に（黒い髪が見えるように）
   if (invMode === 'zukan') return renderZukan();
   $('invTtl').textContent = 'どうぐ';
   $('invHint').textContent = ITEMS_HINT;

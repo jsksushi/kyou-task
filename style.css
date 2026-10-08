@@ -368,7 +368,11 @@ input[type=checkbox]{accent-color:var(--gold)}
 .cell .q{color:var(--dim);font-size:18px}
 .cell.blank{visibility:hidden}
 .cell canvas.mon{width:32px;height:30px;image-rendering:pixelated}
-#invBig.mon{width:64px;height:60px}
+#invBig.mon{width:64px;height:60px;background:#3d2f66;padding:8px;border-radius:6px;box-sizing:content-box}
+/* v4.0.2 図鑑のマスは濃いめの紫（黒い髪・輪郭が背景にとけないように） */
+.inv.zk .cell{background:#3d2f66;border-color:#5c4b8f}
+.inv.zk .cell .q{color:#9a8cc8}
+.inv.zk .cell.sel{border-color:#7CE38A}
 .zkseen{font-size:12px;color:var(--sub)}
 .zkempty{grid-column:1/-1;font-size:12px;color:var(--dim);line-height:1.7;padding:6px 2px;width:264px}
 .zkbtn{margin-top:14px;padding-top:12px;border-top:1px dashed #44446a}
