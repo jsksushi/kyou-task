@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '3.9.2';
+const APP_VERSION = '4.0';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -529,7 +529,7 @@ function completeTask(id) {
   const x = taskById(id); if (!x) return;
   const wasCounted = isCounted(x);
   x.done = true; x.doneAt = Date.now(); x.doneDate = todayKey();
-  // たからばこ：たまに（約10%）宝物が手に入る。どのタスクで手に入れたかを覚えておく（もどしたら減らすため）
+  // たからばこ：たまに（約5%）宝物が手に入る。どのタスクで手に入れたかを覚えておく（もどしたら減らすため）
   const item = Math.random() < TREASURE_RATE ? pickItem() : null;   // 全部そろっていたら出ない
   if (item) x.loot = item.id;
   save(); render();
@@ -613,7 +613,7 @@ function renderProfile() {
 }
 
 /* ---------- v3.5 たからばこ・どうぐ（1種類1個。20個そろうと次のページが開く。集めるだけ） ---------- */
-const TREASURE_RATE = 0.1;
+const TREASURE_RATE = 0.05;   // v4.0：0.1 → 0.05（本人：けっこう出ちゃう）
 const RARITY = { c: { n: 'ふつう', w: 60 }, r: { n: 'レア', w: 28 }, s: { n: 'すごくレア', w: 10 }, l: { n: 'でんせつ', w: 2 } };
 const ITEMS = [
   // ── 1ページ目 ──
@@ -711,9 +711,17 @@ function checkPageOpen() {
 }
 
 /* どうぐ画面：マス目に並べて、カーソルで選ぶと横に名前と説明 */
-let invPage = 1, invSel = 0;
+let invPage = 1, invSel = 0, invMode = 'items';   // v4.0 invMode：items（どうぐ）／ zukan（モンスター図鑑）
+const ITEMS_HINT = 'タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。';
 function renderItems() {
   const $ = id => document.getElementById(id);
+  document.querySelectorAll('[data-itab]').forEach(b => b.classList.toggle('on', b.dataset.itab === invMode));
+  if (invMode === 'zukan') return renderZukan();
+  $('invTtl').textContent = 'どうぐ';
+  $('invHint').textContent = ITEMS_HINT;
+  $('invSeen').hidden = true;
+  $('invBig').classList.remove('mon');
+  $('invRare').hidden = false;
   invPage = Math.min(invPage, ITEM_PAGE);
   const items = ITEMS.filter(i => i.p === invPage);
   const got = ITEMS.filter(i => owned(i.id)).length;
@@ -738,6 +746,195 @@ function renderItems() {
     $('invDesc').textContent = 'まだ みつけていない。';
     $('invBig').hidden = true;
   }
+}
+
+/* ---------- v4.0 モンスター図鑑・上司バトル ----------
+   ・登録したモンスター（なまえ・かたがき・せつめい・こうげき）は Firebase の meta/zukan にだけ保存する。
+     実在の人の名前や文章はコードに入れない（GitHub は公開のため）
+   ・meta/battle：lastDate（その日もう戦ったか。PCとスマホで二重にダメージを受けないため）、seen（出会った回数）
+   ・期限が過ぎて未完了のタスクがある日に、アプリを開くと1日1回だけ戦う。ダメージ＝やり残しの件数 */
+const ZUKAN_KEY = 'kyou-task-zukan', BATTLE_KEY = 'kyou-task-battle';
+const LOOKS = [1, 2, 3, 4, 5, 6];
+let ZUKAN = [], BATTLE = { lastDate: '', seen: {} };
+try { ZUKAN = JSON.parse(localStorage.getItem(ZUKAN_KEY) || '[]') || []; } catch (e) {}
+try { BATTLE = { lastDate: '', seen: {}, ...(JSON.parse(localStorage.getItem(BATTLE_KEY) || '{}') || {}) }; } catch (e) {}
+// やられたときの ひとこと（「／」で書いていない攻撃に使う。だれのことでもない汎用の文）
+const HURT_LINES = [
+  'ざんぎょうに なった！', 'しごとで ミスを した！', 'ひるごはんを たべそこねた！', 'あたまが まっしろに なった！',
+  'メールを ごそうしん した！', 'かいぎに ちこくした！', 'やるきが どこかへ いった！', 'ためいきが とまらなくなった！',
+  'タスクが ひとつ ふえた！', 'きゅうけいが なくなった！',
+];
+const lookOf = m => LOOKS.includes(Number(m && m.look)) ? Number(m.look) : 1;
+const seenOf = id => Number((BATTLE.seen || {})[id]) || 0;
+function setZukan(list) {
+  ZUKAN = Array.isArray(list) ? list.filter(m => m && m.id) : [];
+  try { localStorage.setItem(ZUKAN_KEY, JSON.stringify(ZUKAN)); } catch (e) {}
+  if (document.getElementById('dlgItems').open && invMode === 'zukan') renderItems();
+}
+function setBattle(d) {
+  BATTLE = { lastDate: String((d && d.lastDate) || ''), seen: { ...((d && d.seen) || {}) } };
+  try { localStorage.setItem(BATTLE_KEY, JSON.stringify(BATTLE)); } catch (e) {}
+  if (document.getElementById('dlgItems').open && invMode === 'zukan') renderItems();
+}
+// 「こうげきの文 ／ ひとこと」の行 ⇔ { t, r }
+function parseAttacks(text) {
+  return String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const m = l.match(/^(.*?)\s*[／\/]\s*(.*)$/);
+    return m && m[1].trim() ? { t: m[1].trim(), r: m[2].trim() } : { t: l, r: '' };
+  });
+}
+const attacksText = list => (list || []).map(a => a.r ? `${a.t} ／ ${a.r}` : a.t).join('\n');
+
+/* 図鑑：登録した順にマスに並べる。出会ったことがない子は「？」 */
+function renderZukan() {
+  const $ = id => document.getElementById(id);
+  $('invTtl').textContent = 'モンスター図鑑';
+  $('invPages').innerHTML = '';
+  $('invHint').textContent = 'バトルで であった モンスターが きろくされます。モンスターの とうろくは「セーブ・アカウント」から。';
+  const n = ZUKAN.length;
+  invSel = Math.min(invSel, Math.max(0, n - 1));
+  const met = ZUKAN.filter(m => seenOf(m.id) > 0).length;
+  $('itemsHead').textContent = `であった モンスター ${met} / ${n}`;
+  if (!n) {
+    $('itemRows').innerHTML = '<p class="zkempty">まだ モンスターが とうろく されていない。「セーブ・アカウント」の「モンスターを とうろく」から ふやせます。</p>';
+  } else {
+    const cells = ZUKAN.map((m, i) => {
+      const seen = seenOf(m.id) > 0;
+      return `<button type="button" class="cell ${i === invSel ? 'sel' : ''} ${seen ? '' : 'empty'}" data-cell="${i}" aria-label="${seen ? esc(m.name) : 'まだ であっていない'}">${seen ? `<canvas class="mon" data-mon="${i}"></canvas>` : '<span class="q">？</span>'}</button>`;
+    });
+    while (cells.length % 5) cells.push('<span class="cell blank"></span>');
+    $('itemRows').innerHTML = cells.join('');
+    $('itemRows').querySelectorAll('[data-mon]').forEach(cv => { try { Art.drawChar(cv, 'boss' + lookOf(ZUKAN[cv.dataset.mon]), 2); } catch (e) {} });
+  }
+  const m = ZUKAN[invSel], seen = m && seenOf(m.id) > 0;
+  $('invRare').className = 'rk';
+  $('invBig').classList.add('mon');
+  if (seen) {
+    $('invName').textContent = m.name;
+    $('invRare').textContent = m.title || '';
+    $('invRare').hidden = !m.title;
+    $('invDesc').textContent = m.desc || '';
+    $('invSeen').textContent = `であった かいすう：${seenOf(m.id)}`;
+    $('invSeen').hidden = false;
+    try { Art.drawChar($('invBig'), 'boss' + lookOf(m), 4); } catch (e) {}
+    $('invBig').hidden = false;
+  } else {
+    $('invName').textContent = '？？？';
+    $('invRare').textContent = ''; $('invRare').hidden = true;
+    $('invDesc').textContent = n ? 'まだ であっていない。' : '';
+    $('invSeen').hidden = true;
+    $('invBig').hidden = true;
+  }
+}
+
+/* モンスターの とうろく・なおす（けすは なし） */
+let zkLook = 1;
+function openZukanEdit(id) {
+  const $ = x => document.getElementById(x);
+  $('zkPick').innerHTML = '<option value="">＋ あたらしく とうろく</option>' + ZUKAN.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  $('zkPick').value = id || '';
+  fillZukanForm(id);
+  $('zkMsg').textContent = '';
+  if (!$('dlgZukan').open) $('dlgZukan').showModal();
+}
+function fillZukanForm(id) {
+  const $ = x => document.getElementById(x), m = ZUKAN.find(z => z.id === id);
+  $('zkName').value = m ? m.name : '';
+  $('zkTitle').value = m ? (m.title || '') : '';
+  $('zkDesc').value = m ? (m.desc || '') : '';
+  $('zkAtk').value = m ? attacksText(m.attacks) : '';
+  zkLook = m ? lookOf(m) : 1;
+  $('zkSave').textContent = m ? 'なおす' : 'とうろく';
+  renderLooks();
+}
+function renderLooks() {
+  const row = document.getElementById('zkLooks');
+  if (!row.children.length) {
+    row.innerHTML = LOOKS.map(n => `<button type="button" class="job" data-look="${n}"><canvas data-lookcv="${n}"></canvas><span>みため${n}</span></button>`).join('');
+    row.querySelectorAll('[data-lookcv]').forEach(cv => { try { Art.drawChar(cv, 'boss' + cv.dataset.lookcv, 2); } catch (e) {} });
+  }
+  row.querySelectorAll('[data-look]').forEach(b => b.classList.toggle('on', Number(b.dataset.look) === zkLook));
+}
+function saveZukanForm() {
+  const $ = x => document.getElementById(x);
+  const id = $('zkPick').value, name = $('zkName').value.trim();
+  if (!name) { $('zkMsg').textContent = 'なまえを いれてね'; return; }
+  const data = { name: name.slice(0, 12), look: zkLook, title: $('zkTitle').value.trim(), desc: $('zkDesc').value.trim(), attacks: parseAttacks($('zkAtk').value) };
+  let list, newId = id;
+  if (id && ZUKAN.some(m => m.id === id)) list = ZUKAN.map(m => m.id === id ? { ...m, ...data } : m);
+  else { newId = 'm' + uid(); list = [...ZUKAN, { id: newId, ...data }]; }
+  setZukan(list);
+  if (window.Cloud && window.Cloud.saveZukan) window.Cloud.saveZukan(ZUKAN);
+  openZukanEdit(id ? newId : '');   // あたらしく とうろくしたあとは、続けて次を入れられるよう空にもどす
+  $('zkMsg').textContent = id ? `${data.name}を なおした！` : `${data.name}を とうろくした！`;
+}
+
+/* 上司バトル */
+// 期限（due）が今日より前で、まだ完了していないタスクの数。繰り返しの分身のやり残しも含む
+const lateCount = () => { const t = todayKey(); return S.tasks.filter(x => !x.done && x.due && x.due < t).length; };
+function greetToday() {
+  const n = S.tasks.filter(x => isCounted(x)).length;
+  showMsg(n ? `きょうの タスクが ${n}つ あらわれた！` : 'きょうの タスクは まだ ない。 へいわだ…', true);
+}
+// アプリを開いた日に1回：やり残しがあり、図鑑にモンスターがいて、まだ今日戦っていなければバトル。それ以外はいつもの「あらわれた！」
+async function startOfDay() {
+  const n = lateCount();
+  let mon = null;
+  if (n > 0 && window.Cloud && window.Cloud.claimBattle) {
+    try { mon = await window.Cloud.claimBattle(todayKey()); } catch (e) { console.warn(e); mon = null; }
+  }
+  if (mon) startBattle(mon, n); else greetToday();
+}
+let bSteps = [], bIdx = 0, bTyping = null, bFull = '';
+function startBattle(mon, n) {
+  const atks = (mon.attacks || []).filter(a => a && a.t);
+  const atk = atks.length ? atks[Math.floor(Math.random() * atks.length)] : { t: 'こうげきしてきた！', r: '' };
+  const hurt = atk.r || HURT_LINES[Math.floor(Math.random() * HURT_LINES.length)];
+  if (mon.exp !== null && mon.exp !== undefined) setExp(mon.exp);   // サーバーの最新のけいけんちから減らす
+  const before = levelOf(EXP), dmg = Math.min(n, Math.max(0, EXP));
+  if (dmg > 0) addExp(-dmg);
+  const after = levelOf(EXP);
+  bSteps = [
+    { t: `${mon.name}が あらわれた！` },
+    { t: `${mon.name}の こうげき！\n${atk.t}`, hit: true },
+    { t: `${PROFILE.name}は ${hurt}\n${n}の ダメージを うけた！` },
+    { t: dmg > 0 ? `けいけんちが ${dmg} へった…` : 'けいけんちは もう へらなかった…' },
+  ];
+  if (after < before) bSteps.push({ t: `レベルが ${after}に さがってしまった…` });
+  bIdx = 0;
+  const el = document.getElementById('battle');
+  el.hidden = false;
+  const cv = document.getElementById('bCv'), u = isMobile() ? 8 : 12;
+  try { Art.drawChar(cv, 'boss' + lookOf(mon), u); } catch (e) {}
+  showBattleStep();
+}
+function showBattleStep() {
+  const step = bSteps[bIdx], el = document.getElementById('battle'), txt = document.getElementById('bTxt');
+  const last = bIdx === bSteps.length - 1;
+  document.getElementById('bOk').hidden = true; document.getElementById('bNext').hidden = true;
+  el.classList.remove('hit');
+  if (step.hit) { void el.offsetWidth; el.classList.add('hit'); }
+  clearInterval(bTyping); bFull = step.t; let i = 0; txt.textContent = '';
+  bTyping = setInterval(() => {
+    txt.textContent = bFull.slice(0, ++i);
+    if (i >= bFull.length) { clearInterval(bTyping); bTyping = null; document.getElementById(last ? 'bOk' : 'bNext').hidden = false; if (last) document.getElementById('bOk').focus(); }
+  }, 35);
+}
+function advanceBattle() {
+  if (document.getElementById('battle').hidden) return;
+  if (bTyping) {   // 文字送り中に押したら、その文を最後まで出す
+    clearInterval(bTyping); bTyping = null;
+    document.getElementById('bTxt').textContent = bFull;
+    document.getElementById(bIdx === bSteps.length - 1 ? 'bOk' : 'bNext').hidden = false;
+    return;
+  }
+  if (bIdx < bSteps.length - 1) { bIdx++; showBattleStep(); return; }
+  endBattle();
+}
+function endBattle() {
+  const el = document.getElementById('battle');
+  el.hidden = true; el.classList.remove('hit');
+  try { localStorage.setItem('kyou-task-greeted', todayKey()); } catch (e) {}
 }
 
 /* 宝箱を開けたときの演出（宝箱が開いて、勇者が道具を頭の上に掲げる） */
@@ -1538,17 +1735,29 @@ function bind() {
   document.getElementById('btnRules').onclick = () => { renderRuleRows(); document.getElementById('dlgRules').showModal(); };
   document.getElementById('btnHistory').onclick = () => { histSel.clear(); renderHistoryRows(); document.getElementById('dlgHistory').showModal(); };
   document.getElementById('btnBackup').onclick = () => { document.getElementById('bkDone').hidden = true; document.getElementById('dlgBackup').showModal(); };
-  document.getElementById('btnItems').onclick = () => { invSel = 0; invPage = ITEM_PAGE > 1 && ITEMS.filter(i => i.p === 1).every(i => owned(i.id)) ? ITEM_PAGE : 1; renderItems(); document.getElementById('dlgItems').showModal(); };
+  document.getElementById('btnItems').onclick = () => { invMode = 'items'; invSel = 0; invPage = ITEM_PAGE > 1 && ITEMS.filter(i => i.p === 1).every(i => owned(i.id)) ? ITEM_PAGE : 1; renderItems(); document.getElementById('dlgItems').showModal(); };
   document.getElementById('itemRows').addEventListener('click', e => { const c = e.target.closest('[data-cell]'); if (c) { invSel = Number(c.dataset.cell); renderItems(); } });
   document.getElementById('invPages').addEventListener('click', e => { const b = e.target.closest('[data-page]'); if (b) { invPage = Number(b.dataset.page); invSel = 0; renderItems(); } });
   // 矢印キーでカーソルを動かす（5列×4段）
   document.getElementById('dlgItems').addEventListener('keydown', e => {
     const mv = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -5, ArrowDown: 5 }[e.key]; if (mv === undefined) return;
-    e.preventDefault(); const n = ITEMS.filter(i => i.p === invPage).length;
+    e.preventDefault(); const n = invMode === 'zukan' ? ZUKAN.length : ITEMS.filter(i => i.p === invPage).length;
+    if (!n) return;
     invSel = (invSel + mv + n) % n; renderItems();
     const c = document.querySelector(`#itemRows [data-cell="${invSel}"]`); if (c) c.focus();
   });
   document.getElementById('getOk').onclick = hideGet;
+  // v4.0 どうぐ／モンスター図鑑のタブ・モンスターの とうろく・バトル
+  document.getElementById('invTabs').onclick = e => { const b = e.target.closest('[data-itab]'); if (b && b.dataset.itab !== invMode) { invMode = b.dataset.itab; invSel = 0; renderItems(); } };
+  document.getElementById('btnZukanEdit').onclick = () => openZukanEdit('');
+  document.getElementById('zkPick').onchange = e => { fillZukanForm(e.target.value); document.getElementById('zkMsg').textContent = ''; };
+  document.getElementById('zkLooks').onclick = e => { const b = e.target.closest('[data-look]'); if (b) { zkLook = Number(b.dataset.look); renderLooks(); } };
+  document.getElementById('zukanForm').onsubmit = e => { e.preventDefault(); saveZukanForm(); };
+  document.getElementById('battle').onclick = e => { e.preventDefault(); advanceBattle(); };
+  document.addEventListener('keydown', e => {
+    if (document.getElementById('battle').hidden) return;
+    if (['Enter', ' ', 'Escape'].includes(e.key)) { e.preventDefault(); advanceBattle(); }
+  });
   // プロフィール（なまえ・しょくぎょう）
   const dlgProfile = document.getElementById('dlgProfile');
   let pickJob = 'knight';
@@ -1910,6 +2119,9 @@ window.App = {
   get PROFILE() { return PROFILE; },
   setItems,
   resetItems,
+  setZukan,
+  setBattle,
+  get BATTLE() { return BATTLE; },
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;
@@ -1918,10 +2130,7 @@ window.App = {
     try { greeted = localStorage.getItem('kyou-task-greeted') || ''; } catch (e) {}
     if (first && greeted !== todayKey()) {
       openedMsg = true;
-      setTimeout(() => {
-        const n = S.tasks.filter(x => isCounted(x)).length;
-        showMsg(n ? `きょうの タスクが ${n}つ あらわれた！` : 'きょうの タスクは まだ ない。 へいわだ…', true);
-      }, 600);
+      setTimeout(startOfDay, 600);   // v4.0 やり残しがあれば上司バトル、なければ いつもの「あらわれた！」
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
@@ -1957,7 +2166,7 @@ window.App = {
   },
   // v3.9：ログアウトしたときに、この端末の中の控えを消す（クラウドのデータは消さない）
   wipeLocal() {
-    ['kyou-task-data-v1', 'kyou-task-profile', 'kyou-task-items', 'kyou-task-exp', 'kyou-task-cal-token', 'kyou-task-linked-uid', 'kyou-task-greeted', 'kyou-task-tab']
+    ['kyou-task-data-v1', 'kyou-task-profile', 'kyou-task-items', 'kyou-task-zukan', 'kyou-task-battle', 'kyou-task-exp', 'kyou-task-cal-token', 'kyou-task-linked-uid', 'kyou-task-greeted', 'kyou-task-tab']
       .forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
     try { Object.keys(localStorage).filter(k => k.startsWith('kyou-task-data-')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
     try { localStorage.setItem('kyou-task-wipe-cache', '1'); } catch (e) {}   // Firestore の端末内キャッシュは、次に開いたときに消す

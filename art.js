@@ -32,6 +32,13 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     ghost: ['...kkkkkk...', '..kwwwwwwk..', '.kwwwwwwwwk.', 'kwwewwwwewwk', 'kwwwwwwwwwwk', 'kwwwwmmwwwwk', 'kwwwwwwwwwwk', 'kwwwwwwwwwwk', 'kwkwwkkwwkwk', '.k.kk..kk.k.'],
     chest: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kbyybbbbyybk', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
     chestOpen: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk', '.kwyyyyyywk.', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
+    // ▼ v4.0 上司バトルのモンスター（オリジナルのドット絵。図鑑では「みため1〜6」。IDや名前に実在の人の名前は入れない）
+    boss1: ["....kkkkkkk.....", "...khhhshhhk....", "..khhhssshhhk...", "..khhssssshhk...", "..khsessseshk...", "..khsssnssshk...", "..khssssnsshk...", "...ksssssssk....", "..kkkjwwwjkkk...", "...kjjwwwjjk....", "...kjjwwwjjk....", "...ksjwwwjsk....", "....kpppppk.....", "....kppkppk.....", "....kwwkwwk....."],
+    boss2: [".....k.kk.......", "....kkhkhhk.....", "...khhhhhhhk....", "...khhhhhhhhk...", "...khshhshhk....", "....ksessesk....", "....kssssssk....", ".....kssssk.....", ".....kTTTTk.....", "....kTTTTTTk....", "....kTTTTTTk....", "....sTTTTTTs....", ".....kddddk.....", ".....kdkkdk.....", ".....kwkkwk....."],
+    boss3: ["................", ".....kkkkkk.....", "....khHhhHhk....", "...khHhhHhshk...", "...ksGGssGGsk...", "...kGLlGGLlGk...", "...kGllGGllGk...", "...ksGGssGGsk...", "....kssssssk....", ".....kvvvvk.....", "....kvvvvvvk....", "....svvvvvvs....", ".....kaaaak.....", ".....kakkak.....", ".....kfkkfk....."],
+    boss4: [".....kkkkk......", "....khHhhhk.....", "...khhhshHhk....", "...khhssshhk....", "...khssssshk....", "...ksesssesk....", "...ksssnsssk....", "...ksssssssk....", "....ksssssk.....", "...kddydyddk....", "...kdddydddk....", "..Ysdddddddsk...", "....kdddddk.....", "....kddkddk.....", "....kffkffk....."],
+    boss5: ["....k.k.k.k.....", "...khkhkhkhk....", "...khhhhhhhk....", "...kshshshsk....", "...ksEeseEsk....", "...ksssssssk....", "...kssmmmssk....", "....kkssskk.....", "..kkwwwwwwwkk...", ".kswwwwwwwwwsk..", "kssswwwWwwwsssk.", "kssswwwwwwwsssk.", ".kkkpppppppkkk..", "....kppkppk.....", "....kffkffk....."],
+    boss6: ["....kkkkkkkk....", "...khhHshhHhk...", "..khHhhshhhHhk..", ".khhhHssshHhhhk.", ".kHhhssssshhHhk.", ".khhHseseshHhk..", "..khhsssssshHk..", ".kHhhhsmmshhhHk.", ".kkhkkwwwkkhkk..", "..kwwwwwwwwwk...", ".kwwwwwwwwwwwk..", ".kswwwwwwwwwsk..", "..kaaaaaaaaak...", "..kaaaakaaaak...", "...kffk.kffk...."],
   };
   const PAL = {
     knight: { k: K, x: '#E8EEF8', g: '#C79A00', h: '#8a4a20', b: '#D23B3B', s: '#F6D2B0', e: K, w: '#F4F4F4', c: '#3A6FD8', R: '#C79A00', S: '#3A6FD8', f: '#5a4030' },
@@ -47,6 +54,12 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     ghost: { k: K, w: '#EAF2FF', e: K, m: '#7a7aa0' },
     chest: { k: K, b: '#B5673A', y: '#FCD000' },
     chestOpen: { k: K, b: '#B5673A', y: '#FCD000', w: '#fffbe0' },
+    boss1: { k: K, h: '#2c2a3a', s: '#F6D2B0', n: '#e0b08c', E: '#ffffff', e: K, w: '#F4F4F4', j: '#34343f', p: '#24242c' },
+    boss2: { k: K, h: '#2c2a3a', s: '#F6D2B0', e: K, T: '#3a3a48', d: '#2a2a34', w: '#ffffff' },
+    boss3: { k: K, h: '#3a3640', H: '#8a8894', s: '#F6D2B0', G: '#3a2a5a', l: '#c8c4f4', L: '#ffffff', v: '#2a3a6a', a: '#8a8a94', f: '#3a2a20' },
+    boss4: { k: K, h: '#6a4a38', H: '#9a6c4c', s: '#F6D2B0', n: '#e0b08c', e: K, d: '#2e2e38', y: '#d8b040', Y: '#F6D24A', f: '#2a2a34' },
+    boss5: { k: K, h: '#2c2a3a', s: '#F6D2B0', E: '#ffffff', e: K, m: '#8a5040', w: '#F4F4F4', W: '#dcdce4', p: '#4a5a7a', f: '#3a2a20' },
+    boss6: { k: K, h: '#2c2a3a', H: '#4a4660', s: '#F6D2B0', e: K, m: '#d08070', w: '#9a9aa6', a: '#2a2a34', f: '#3a2a20' },
   };
   function sprite(name, x, y, u = 3) { const rows = SPR[name], pal = PAL[name]; rows.forEach((row, ry) => [...row].forEach((ch, rx) => { const c = pal[ch]; if (c) P(x + rx * u, y + ry * u, u, u, c); })); }
   const H = n => SPR[n].length;

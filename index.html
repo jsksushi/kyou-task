@@ -236,6 +236,10 @@
     <span>ログイン中：<b id="accountEmail"></b></span>
     <button type="button" class="btn small" id="btnLogout">ログアウト</button>
   </div>
+  <div class="stack zkbtn">
+    <button type="button" class="btn" id="btnZukanEdit">モンスターを とうろく</button>
+    <p class="hint">きげんの すぎた タスクが のこっていると、1日1回 モンスターが おそってきます。ここで とうろくした モンスターから、まいにち 1たい えらばれます。</p>
+  </div>
   <div class="dlg-foot">
     <span class="spacer"></span>
     <button type="button" class="btn" data-close>閉じる</button>
@@ -280,9 +284,10 @@
 
 <!-- v3.5 どうぐ（たからばこで手に入れた道具。マス目に並べて、選ぶと横に説明） -->
 <dialog id="dlgItems" class="dlg wide inv">
+  <div class="invtabs" id="invTabs"><button type="button" class="itab on" data-itab="items">どうぐ</button><button type="button" class="itab" data-itab="zukan">モンスター図鑑</button></div>
   <div class="invwrap">
     <section class="win invgrid">
-      <span class="ttl">どうぐ</span>
+      <span class="ttl" id="invTtl">どうぐ</span>
       <div class="pages" id="invPages"></div>
       <div class="grid" id="itemRows"></div>
     </section>
@@ -291,14 +296,41 @@
       <canvas id="invBig" hidden></canvas>
       <span class="rk" id="invRare"></span>
       <p id="invDesc"></p>
+      <span class="zkseen" id="invSeen" hidden></span>
     </section>
   </div>
-  <p class="hint">タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。</p>
+  <p class="hint" id="invHint">タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。</p>
   <div class="dlg-foot"><span class="ihead" id="itemsHead"></span><span class="spacer"></span><button type="button" class="btn primary" data-close>閉じる</button></div>
 </dialog>
 
 <!-- v3.5 宝箱を開けたときの演出 -->
 <div class="getwrap" id="getwrap" hidden><section class="win getbox"><canvas id="getCv"></canvas><p id="getTxt"></p><button type="button" class="btn primary getok" id="getOk">▶ OK</button></section></div>
+
+<!-- v4.0 上司バトル（期限切れのタスクがある日に1回だけ） -->
+<div class="battle" id="battle" hidden>
+  <div class="bstage" id="bStage"><canvas id="bCv"></canvas></div>
+  <section class="win bmsg" id="bMsg"><p id="bTxt"></p><span class="bnext" id="bNext">▼</span><button type="button" class="btn primary bok" id="bOk" hidden>▶ OK</button></section>
+</div>
+
+<!-- v4.0 モンスターの とうろく（なまえ・せつめいなどは Firebase にだけ保存。コードには入れない） -->
+<dialog id="dlgZukan" class="dlg">
+  <form method="dialog" id="zukanForm">
+    <h2>モンスターを とうろく</h2>
+    <label class="field"><span>どれを</span><select id="zkPick"></select></label>
+    <label class="field"><span>なまえ</span><input type="text" id="zkName" maxlength="12" autocomplete="off" required></label>
+    <div class="field"><span>みため</span><div class="jobs zklooks" id="zkLooks"></div></div>
+    <label class="field"><span>かたがき</span><input type="text" id="zkTitle" maxlength="24" autocomplete="off" placeholder="なくてもOK"></label>
+    <label class="field"><span>せつめい</span><textarea id="zkDesc" rows="3"></textarea></label>
+    <label class="field"><span>こうげき</span><textarea id="zkAtk" rows="6" placeholder="1行に 1つ。「こうげきの文 ／ やられたときの ひとこと」"></textarea></label>
+    <p class="hint">こうげきは 1行に 1つ。「／」の うしろに やられたときの ひとことを かくと、「（なまえ）は ◯◯！ 3の ダメージを うけた！」の ◯◯に はいります（なまえは じどうで はいります）。ひとことが ない行は、きまった ひとことから ランダムに でます。こうげきは 図鑑には でません。</p>
+    <div class="dlg-foot">
+      <span class="ihead" id="zkMsg"></span>
+      <span class="spacer"></span>
+      <button type="button" class="btn" data-close>閉じる</button>
+      <button type="submit" class="btn primary" id="zkSave">とうろく</button>
+    </div>
+  </form>
+</dialog>
 
 <!-- v3.4 プロフィール（なまえ・しょくぎょう） -->
 <dialog id="dlgProfile" class="dlg">

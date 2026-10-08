@@ -364,3 +364,31 @@ input[type=checkbox]{accent-color:var(--gold)}
 .bkdone{margin:0;padding:6px 10px;border:2px solid var(--gold);border-radius:4px;color:var(--gold);font-size:13px;line-height:1.6}
 .bkdone span{color:#fff;font-size:12px;word-break:break-all}
 .bkdone.pop{animation:bl .4s steps(1) 3}
+/* ---------- v4.0 モンスター図鑑（どうぐ画面のタブ） ---------- */
+.invtabs{display:flex;gap:6px;margin:-4px 0 6px}
+.itab{background:#000;border:2px solid var(--dim);border-radius:6px 6px 0 0;color:var(--sub);font:inherit;font-size:13px;padding:4px 12px;cursor:pointer}
+.itab.on{border-color:#fff;color:var(--gold)}
+.cell .q{color:var(--dim);font-size:18px}
+.cell.blank{visibility:hidden}
+.cell canvas.mon{width:32px;height:30px;image-rendering:pixelated}
+#invBig.mon{width:64px;height:60px}
+.zkseen{font-size:12px;color:var(--sub)}
+.zkempty{grid-column:1/-1;font-size:12px;color:var(--dim);line-height:1.7;padding:6px 2px;width:264px}
+.zkbtn{margin-top:14px;padding-top:12px;border-top:1px dashed #44446a}
+.zklooks .job{padding:6px}
+.zklooks .job canvas{width:32px;height:30px;image-rendering:pixelated}
+#zkDesc,#zkAtk{resize:vertical;line-height:1.6}
+/* ---------- v4.0 上司バトル ---------- */
+.battle{position:fixed;inset:0;z-index:48;background:rgba(4,4,16,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:16px;cursor:pointer}
+.bstage{display:grid;place-items:center;min-height:200px}
+#bCv{image-rendering:pixelated}
+.bmsg{width:min(640px,100%);min-height:110px;padding:16px 18px 30px}
+#bTxt{margin:0;font-size:17px;line-height:1.8;white-space:pre-wrap}
+.bnext{position:absolute;right:14px;bottom:6px;color:var(--gold);animation:bl .8s steps(1) infinite}
+.bok{position:absolute;right:12px;bottom:8px;min-width:96px}
+.battle.hit{animation:bshake .45s steps(6)}
+.battle.hit::after{content:"";position:absolute;inset:0;background:#ff2a2a;opacity:0;animation:bflash .45s steps(3);pointer-events:none}
+@keyframes bshake{0%{transform:translate(0,0)}20%{transform:translate(-10px,4px)}40%{transform:translate(9px,-5px)}60%{transform:translate(-7px,3px)}80%{transform:translate(5px,-2px)}100%{transform:translate(0,0)}}
+@keyframes bflash{0%{opacity:.55}50%{opacity:.2}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.battle.hit,.battle.hit::after{animation:none}.bnext{animation:none}}
+@media (max-width:700px){#bTxt{font-size:15px}.bstage{min-height:150px}}
