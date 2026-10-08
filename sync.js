@@ -60,7 +60,7 @@ const statsRef = () => doc(db, 'users', user.uid, 'meta', 'stats');   // けい�
 const profileRef = () => doc(db, 'users', user.uid, 'meta', 'profile'); // v3.4 なまえ・しょくぎょう
 const itemsRef = () => doc(db, 'users', user.uid, 'meta', 'items');     // たからばこの道具 { counts: {アイテムID: 0か1}, page: 開いたページ数 }
 const zukanRef = () => doc(db, 'users', user.uid, 'meta', 'zukan');     // v4.0 登録したモンスター { list: [{ id, name, look, title, desc, attacks: [{ t, r }] }] }
-const battleRef = () => doc(db, 'users', user.uid, 'meta', 'battle');   // v4.0 { lastDate: その日もう戦ったか, seen: { モンスターID: 出会った回数 } }
+const battleRef = () => doc(db, 'users', user.uid, 'meta', 'battle');   // v4.0 { lastDate: 最後に戦った日（v4.0.3〜 記録だけ）, seen: { モンスターID: 出会った回数 } }
 
 async function commitOps(ops) {
   for (let i = 0; i < ops.length; i += 400) {
@@ -206,14 +206,13 @@ function saveZukan(list) {
   if (!user) return;
   setDoc(zukanRef(), { list }, { merge: true }).catch(err => App.cloudStatus('error', err));
 }
-// v4.0 今日のバトル：サーバーの最新を見て、今日まだ戦っていなければ「戦った」と記録して1体選ぶ。
-// 今日もう戦っていた（別の端末で戦った）・図鑑が空・オフラインなどは null（いつもの「あらわれた！」）
+// v4.0 バトル：サーバーの最新の図鑑から1体選び、戦った日と出会った回数を記録する。
+// v4.0.3〜 アプリを開くたびに戦うので「今日もう戦ったか」は見ない。図鑑が空・オフラインなどは null（いつもの「あらわれた！」）
 async function claimBattle(today) {
   if (!user) return null;
-  const [z, b, st] = await Promise.all([getDocFromServer(zukanRef()), getDocFromServer(battleRef()), getDocFromServer(statsRef())]);
+  const [z, st] = await Promise.all([getDocFromServer(zukanRef()), getDocFromServer(statsRef())]);
   const list = ((z.exists() && z.data().list) || []).filter(m => m && m.id && m.name);
   if (!list.length) return null;
-  if (b.exists() && b.data().lastDate === today) return null;
   const mon = list[Math.floor(Math.random() * list.length)];
   await setDoc(battleRef(), { lastDate: today, seen: { [mon.id]: increment(1) } }, { merge: true });
   // けいけんちもサーバーの最新を渡す（端末の控えが古いと、ダメージの計算がずれるため）

@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.2';
+const APP_VERSION = '4.0.3';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -751,8 +751,8 @@ function renderItems() {
 /* ---------- v4.0 モンスター図鑑・上司バトル ----------
    ・登録したモンスター（なまえ・かたがき・せつめい・こうげき）は Firebase の meta/zukan にだけ保存する。
      実在の人の名前や文章はコードに入れない（GitHub は公開のため）
-   ・meta/battle：lastDate（その日もう戦ったか。PCとスマホで二重にダメージを受けないため）、seen（出会った回数）
-   ・期限が過ぎて未完了のタスクがある日に、アプリを開くと1日1回だけ戦う。ダメージ＝やり残しの件数 */
+   ・meta/battle：lastDate（最後に戦った日。v4.0.3〜 記録だけ）、seen（出会った回数）
+   ・期限が過ぎて未完了のタスクがあると、アプリを開くたびに戦う（v4.0.3〜。v4.0〜4.0.2 は1日1回）。ダメージ＝やり残しの件数（毎回） */
 const ZUKAN_KEY = 'kyou-task-zukan', BATTLE_KEY = 'kyou-task-battle';
 const LOOKS = [1, 2, 3, 4, 5, 6];
 let ZUKAN = [], BATTLE = { lastDate: '', seen: {} };
@@ -883,7 +883,10 @@ async function startOfDay() {
   if (n > 0 && window.Cloud && window.Cloud.claimBattle) {
     try { mon = await window.Cloud.claimBattle(todayKey()); } catch (e) { console.warn(e); mon = null; }
   }
-  if (mon) startBattle(mon, n); else greetToday();
+  if (mon) { startBattle(mon, n); return; }
+  let greeted = '';
+  try { greeted = localStorage.getItem('kyou-task-greeted') || ''; } catch (e) {}
+  if (greeted !== todayKey()) greetToday();
 }
 let bSteps = [], bIdx = 0, bTyping = null, bFull = '';
 function startBattle(mon, n) {
@@ -2125,12 +2128,10 @@ window.App = {
   onCloudReady() {
     const first = !cloudReady && !openedMsg;
     cloudReady = true;
-    // 「あらわれた！」は1日1回だけ（この端末で今日はじめて開いたとき）。OKを押すまで出しておく
-    let greeted = '';
-    try { greeted = localStorage.getItem('kyou-task-greeted') || ''; } catch (e) {}
-    if (first && greeted !== todayKey()) {
+    // v4.0.3 アプリを開くたびに：やり残しがあれば上司バトル（毎回）。なければ「あらわれた！」（この端末で1日1回だけ。OKを押すまで出しておく）
+    if (first) {
       openedMsg = true;
-      setTimeout(startOfDay, 600);   // v4.0 やり残しがあれば上司バトル、なければ いつもの「あらわれた！」
+      setTimeout(startOfDay, 600);
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
