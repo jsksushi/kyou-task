@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.0.1';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -711,11 +711,10 @@ function checkPageOpen() {
 }
 
 /* どうぐ画面：マス目に並べて、カーソルで選ぶと横に名前と説明 */
-let invPage = 1, invSel = 0, invMode = 'items';   // v4.0 invMode：items（どうぐ）／ zukan（モンスター図鑑）
+let invPage = 1, invSel = 0, invMode = 'items';   // v4.0 invMode：items（どうぐ）／ zukan（モンスター図鑑）。v4.0.1 図鑑はコマンドの「モンスター図鑑」から（どうぐ画面と同じ窓を使う）
 const ITEMS_HINT = 'タスクを完了すると、たまに たからばこが みつかります。1しゅるい 1こずつ。20こ そろうと つぎの ページが ひらきます。「もどす」と、そのとき手に入れた どうぐは かえします。';
 function renderItems() {
   const $ = id => document.getElementById(id);
-  document.querySelectorAll('[data-itab]').forEach(b => b.classList.toggle('on', b.dataset.itab === invMode));
   if (invMode === 'zukan') return renderZukan();
   $('invTtl').textContent = 'どうぐ';
   $('invHint').textContent = ITEMS_HINT;
@@ -1747,8 +1746,8 @@ function bind() {
     const c = document.querySelector(`#itemRows [data-cell="${invSel}"]`); if (c) c.focus();
   });
   document.getElementById('getOk').onclick = hideGet;
-  // v4.0 どうぐ／モンスター図鑑のタブ・モンスターの とうろく・バトル
-  document.getElementById('invTabs').onclick = e => { const b = e.target.closest('[data-itab]'); if (b && b.dataset.itab !== invMode) { invMode = b.dataset.itab; invSel = 0; renderItems(); } };
+  // v4.0 モンスター図鑑（v4.0.1：コマンドのボタンから）・モンスターの とうろく・バトル
+  document.getElementById('btnZukan').onclick = () => { invMode = 'zukan'; invSel = 0; renderItems(); document.getElementById('dlgItems').showModal(); };
   document.getElementById('btnZukanEdit').onclick = () => openZukanEdit('');
   document.getElementById('zkPick').onchange = e => { fillZukanForm(e.target.value); document.getElementById('zkMsg').textContent = ''; };
   document.getElementById('zkLooks').onclick = e => { const b = e.target.closest('[data-look]'); if (b) { zkLook = Number(b.dataset.look); renderLooks(); } };
