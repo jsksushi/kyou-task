@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.4';
+const APP_VERSION = '4.0.5';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -572,6 +572,8 @@ const JOBS = {
   wizard: { n: 'まほうつかい', hp: [14, 4], mp: [12, 5], str: [4, 1], agi: [7, 2], def: [5, 1] },
   priest: { n: 'そうりょ',     hp: [17, 5], mp: [10, 4], str: [6, 2], agi: [6, 2], def: [7, 2] },
   archer: { n: 'かりゅうど',   hp: [18, 5], mp: [4, 2], str: [8, 2], agi: [11, 4], def: [6, 2] },
+  // v4.0.5 しーえす：HP・MPは ひくめ、ちから・すばやさも ひくめ。メンタル（まもり）だけ つよい
+  cs:     { n: 'しーえす',     hp: [12, 3], mp: [6, 2], str: [3, 1], agi: [5, 1], def: [14, 5] },
 };
 const STAT_KEYS = [['hp', 'さいだいHP'], ['mp', 'さいだいMP'], ['str', 'ちから'], ['agi', 'すばやさ'], ['def', 'まもり']];
 function statsOf(job, lv) {

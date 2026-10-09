@@ -32,6 +32,8 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     ghost: ['...kkkkkk...', '..kwwwwwwk..', '.kwwwwwwwwk.', 'kwwewwwwewwk', 'kwwwwwwwwwwk', 'kwwwwmmwwwwk', 'kwwwwwwwwwwk', 'kwwwwwwwwwwk', 'kwkwwkkwwkwk', '.k.kk..kk.k.'],
     chest: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kbyybbbbyybk', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
     chestOpen: ['.kkkkkkkkkk.', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk', '.kwyyyyyywk.', 'kkkkkyykkkkk', 'kbbbbyybbbbk', 'kbbbbbbbbbbk', 'kkkkkkkkkkkk'],
+    // ▼ v4.0.5 しょくぎょう「しーえす」（ふつうのOL・セミロングの明るめの茶髪。オリジナル）
+    cs: ["....kkkkkkkk....", "...khhHhhhhhk...", "..khhhhhhHhhhk..", "..khhssshhhhhk..", "..khsesssseshk..", "..khsssssssshk..", "..khhsssmsshhk..", "..khhhkwwkhhhk..", "...khkwwwwkhk...", "...kjjwwwwjjk...", "...kjjwwwwjjk...", "...ksjjjjjjsk...", "....kcccccck....", "....kssk.kssk...", "....kffk.kffk..."],
     // ▼ v4.0 上司バトルのモンスター（オリジナルのドット絵。図鑑では「みため1〜6」。IDや名前に実在の人の名前は入れない）
     boss1: ["....kkkkkkk.....", "...khhhshhhk....", "..khhhssshhhk...", "..khhssssshhk...", "..khsessseshk...", "..khsssnssshk...", "..khssssnsshk...", "...ksssssssk....", "..kkkjwwwjkkk...", "...kjjwwwjjk....", "...kjjwwwjjk....", "...ksjwwwjsk....", "....kpppppk.....", "....kppkppk.....", "....kwwkwwk....."],
     boss2: [".....k.kk.......", "....kkhkhhk.....", "...khhhhhhhk....", "...khhhhhhhhk...", "...khshhshhk....", "....ksessesk....", "....kssssssk....", ".....kssssk.....", ".....kTTTTk.....", "....kTTTTTTk....", "....kTTTTTTk....", "....sTTTTTTs....", ".....kddddk.....", ".....kdkkdk.....", ".....kwkkwk....."],
@@ -54,6 +56,7 @@ knight:["..k...kkkk......",".kxk.khhhhk.....",".kxkkhhhhhhk....",".kxkkbbbbbbk..
     ghost: { k: K, w: '#EAF2FF', e: K, m: '#7a7aa0' },
     chest: { k: K, b: '#B5673A', y: '#FCD000' },
     chestOpen: { k: K, b: '#B5673A', y: '#FCD000', w: '#fffbe0' },
+    cs: { k: K, h: '#b07848', H: '#d8a070', s: '#F6D2B0', e: K, m: '#e08080', w: '#F4F4F4', j: '#3a4a7a', c: '#6a6a7a', f: '#2a2a40' },
     boss1: { k: K, h: '#2c2a3a', s: '#F6D2B0', n: '#e0b08c', E: '#ffffff', e: K, w: '#F4F4F4', j: '#34343f', p: '#24242c' },
     boss2: { k: K, h: '#2c2a3a', s: '#F6D2B0', e: K, T: '#3a3a48', d: '#2a2a34', w: '#ffffff' },
     boss3: { k: K, h: '#3a3640', H: '#8a8894', s: '#F6D2B0', G: '#3a2a5a', l: '#c8c4f4', L: '#ffffff', v: '#2a3a6a', a: '#8a8a94', f: '#3a2a20' },
