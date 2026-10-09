@@ -316,9 +316,10 @@
 <dialog id="dlgZukan" class="dlg">
   <form method="dialog" id="zukanForm">
     <h2>モンスターを とうろく</h2>
-    <label class="field"><span>どれを</span><select id="zkPick"></select></label>
-    <label class="field"><span>なまえ</span><input type="text" id="zkName" maxlength="12" autocomplete="off" required></label>
+    <div class="zktop"><span class="zkmode" id="zkMode"></span><button type="button" class="btn small" id="zkNew">＋ あたらしく とうろく</button></div>
     <div class="field"><span>みため</span><div class="jobs zklooks" id="zkLooks"></div></div>
+    <p class="hint zkhint" id="zkHint"></p>
+    <label class="field"><span>なまえ</span><input type="text" id="zkName" maxlength="12" autocomplete="off" required></label>
     <label class="field"><span>かたがき</span><input type="text" id="zkTitle" maxlength="24" autocomplete="off" placeholder="なくてもOK"></label>
     <label class="field"><span>せつめい</span><textarea id="zkDesc" rows="3"></textarea></label>
     <label class="field"><span>こうげき</span><textarea id="zkAtk" rows="6" placeholder="1行に 1つ。「こうげきの文 ／ やられたときの ひとこと」"></textarea></label>

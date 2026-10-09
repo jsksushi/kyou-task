@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.3';
+const APP_VERSION = '4.0.4';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -827,37 +827,53 @@ function renderZukan() {
   }
 }
 
-/* モンスターの とうろく・なおす（けすは なし） */
-let zkLook = 1;
+/* モンスターの とうろく・なおす（けすは なし）
+   v4.0.4：「どれを」の選択をやめた。みため1〜6を押すと、そのみための モンスターの中身が出て、そのまま なおせる。
+   あたらしく とうろくするときだけ 上の「＋ あたらしく とうろく」を押す（そのときは みためを押すと 絵を えらぶ） */
+let zkLook = 1, zkCur = '';   // zkCur：なおしている モンスターのID（'' は あたらしく とうろく）
+const monOfLook = n => ZUKAN.find(m => lookOf(m) === n);
 function openZukanEdit(id) {
   const $ = x => document.getElementById(x);
-  $('zkPick').innerHTML = '<option value="">＋ あたらしく とうろく</option>' + ZUKAN.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
-  $('zkPick').value = id || '';
-  fillZukanForm(id);
+  fillZukanForm(id === undefined ? (ZUKAN[0] ? ZUKAN[0].id : '') : id);
   $('zkMsg').textContent = '';
   if (!$('dlgZukan').open) $('dlgZukan').showModal();
 }
-function fillZukanForm(id) {
+function fillZukanForm(id, look) {
   const $ = x => document.getElementById(x), m = ZUKAN.find(z => z.id === id);
+  zkCur = m ? m.id : '';
   $('zkName').value = m ? m.name : '';
   $('zkTitle').value = m ? (m.title || '') : '';
   $('zkDesc').value = m ? (m.desc || '') : '';
   $('zkAtk').value = m ? attacksText(m.attacks) : '';
-  zkLook = m ? lookOf(m) : 1;
+  zkLook = m ? lookOf(m) : (look || (LOOKS.find(n => !monOfLook(n)) || 1));
   $('zkSave').textContent = m ? 'なおす' : 'とうろく';
+  $('zkNew').classList.toggle('on', !m);
+  $('zkNew').textContent = m ? '＋ あたらしく とうろく' : '← とうろくずみの モンスターに もどる';
+  $('zkNew').hidden = !m && !ZUKAN.length;
+  $('zkMode').textContent = m ? `${m.name}を なおす` : 'あたらしい モンスター';
+  $('zkHint').textContent = m ? 'みためを おすと、その モンスターの なかみが でます（そのまま なおせます）。' : 'みためを おして、あたらしい モンスターの 絵を えらんでね。';
   renderLooks();
 }
 function renderLooks() {
   const row = document.getElementById('zkLooks');
   if (!row.children.length) {
-    row.innerHTML = LOOKS.map(n => `<button type="button" class="job" data-look="${n}"><canvas data-lookcv="${n}"></canvas><span>みため${n}</span></button>`).join('');
+    row.innerHTML = LOOKS.map(n => `<button type="button" class="job" data-look="${n}"><canvas data-lookcv="${n}"></canvas><span data-looklbl="${n}"></span></button>`).join('');
     row.querySelectorAll('[data-lookcv]').forEach(cv => { try { Art.drawChar(cv, 'boss' + cv.dataset.lookcv, 2); } catch (e) {} });
   }
+  row.querySelectorAll('[data-looklbl]').forEach(sp => { const m = monOfLook(Number(sp.dataset.looklbl)); sp.textContent = m ? m.name : `みため${sp.dataset.looklbl}`; });
   row.querySelectorAll('[data-look]').forEach(b => b.classList.toggle('on', Number(b.dataset.look) === zkLook));
+}
+// みためを押したとき：なおしている途中なら その みための モンスターに切りかえ（いなければ あたらしく）。あたらしく とうろく中なら 絵を えらぶ
+function pickLook(n) {
+  document.getElementById('zkMsg').textContent = '';
+  if (zkCur) {
+    const m = monOfLook(n);
+    if (m) fillZukanForm(m.id); else fillZukanForm('', n);
+  } else { zkLook = n; renderLooks(); }
 }
 function saveZukanForm() {
   const $ = x => document.getElementById(x);
-  const id = $('zkPick').value, name = $('zkName').value.trim();
+  const id = zkCur, name = $('zkName').value.trim();
   if (!name) { $('zkMsg').textContent = 'なまえを いれてね'; return; }
   const data = { name: name.slice(0, 12), look: zkLook, title: $('zkTitle').value.trim(), desc: $('zkDesc').value.trim(), attacks: parseAttacks($('zkAtk').value) };
   let list, newId = id;
@@ -865,7 +881,7 @@ function saveZukanForm() {
   else { newId = 'm' + uid(); list = [...ZUKAN, { id: newId, ...data }]; }
   setZukan(list);
   if (window.Cloud && window.Cloud.saveZukan) window.Cloud.saveZukan(ZUKAN);
-  openZukanEdit(id ? newId : '');   // あたらしく とうろくしたあとは、続けて次を入れられるよう空にもどす
+  fillZukanForm(newId);   // とうろく・なおしたあとは、その モンスターを えらんだ状態に
   $('zkMsg').textContent = id ? `${data.name}を なおした！` : `${data.name}を とうろくした！`;
 }
 
@@ -1752,9 +1768,9 @@ function bind() {
   document.getElementById('getOk').onclick = hideGet;
   // v4.0 モンスター図鑑（v4.0.1：コマンドのボタンから）・モンスターの とうろく・バトル
   document.getElementById('btnZukan').onclick = () => { invMode = 'zukan'; invSel = 0; renderItems(); document.getElementById('dlgItems').showModal(); };
-  document.getElementById('btnZukanEdit').onclick = () => openZukanEdit('');
-  document.getElementById('zkPick').onchange = e => { fillZukanForm(e.target.value); document.getElementById('zkMsg').textContent = ''; };
-  document.getElementById('zkLooks').onclick = e => { const b = e.target.closest('[data-look]'); if (b) { zkLook = Number(b.dataset.look); renderLooks(); } };
+  document.getElementById('btnZukanEdit').onclick = () => openZukanEdit();
+  document.getElementById('zkNew').onclick = () => { document.getElementById('zkMsg').textContent = ''; fillZukanForm(zkCur ? '' : (ZUKAN[0] ? ZUKAN[0].id : '')); };
+  document.getElementById('zkLooks').onclick = e => { const b = e.target.closest('[data-look]'); if (b) pickLook(Number(b.dataset.look)); };
   document.getElementById('zukanForm').onsubmit = e => { e.preventDefault(); saveZukanForm(); };
   document.getElementById('battle').onclick = e => { e.preventDefault(); advanceBattle(); };
   document.addEventListener('keydown', e => {

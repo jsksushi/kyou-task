@@ -393,3 +393,8 @@ input[type=checkbox]{accent-color:var(--gold)}
 @keyframes bflash{0%{opacity:.55}50%{opacity:.2}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.battle.hit,.battle.hit::after{animation:none}.bnext{animation:none}}
 @media (max-width:700px){#bTxt{font-size:15px}.bstage{min-height:150px}}
+/* v4.0.4 モンスターの とうろく：みためを押して えらぶ */
+.zktop{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:-4px 0 12px}
+.zkmode{color:var(--gold);font-size:14px}
+.zkhint{margin:-6px 0 12px}
+.zklooks .job span{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
