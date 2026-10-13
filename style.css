@@ -398,3 +398,6 @@ input[type=checkbox]{accent-color:var(--gold)}
 .zkmode{color:var(--gold);font-size:14px}
 .zkhint{margin:-6px 0 12px}
 .zklooks .job span{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* v4.0.6 モンスター登録：あたらしく とうろく中、もう つかわれている みためは おせない */
+#zkLooks .job:disabled { opacity: .35; cursor: not-allowed; filter: grayscale(.6); }

@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.5';
+const APP_VERSION = '4.0.6';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -848,12 +848,14 @@ function fillZukanForm(id, look) {
   $('zkDesc').value = m ? (m.desc || '') : '';
   $('zkAtk').value = m ? attacksText(m.attacks) : '';
   zkLook = m ? lookOf(m) : (look || (LOOKS.find(n => !monOfLook(n)) || 1));
+  const noFree = !m && !LOOKS.some(n => !monOfLook(n));   // v4.0.6 つかえる みためが もうない
   $('zkSave').textContent = m ? 'なおす' : 'とうろく';
+  $('zkSave').disabled = noFree;
   $('zkNew').classList.toggle('on', !m);
   $('zkNew').textContent = m ? '＋ あたらしく とうろく' : '← とうろくずみの モンスターに もどる';
   $('zkNew').hidden = !m && !ZUKAN.length;
   $('zkMode').textContent = m ? `${m.name}を なおす` : 'あたらしい モンスター';
-  $('zkHint').textContent = m ? 'みためを おすと、その モンスターの なかみが でます（そのまま なおせます）。' : 'みためを おして、あたらしい モンスターの 絵を えらんでね。';
+  $('zkHint').textContent = m ? 'みためを おすと、その モンスターの なかみが でます（そのまま なおせます）。' : (noFree ? 'つかえる みためが もう ない（ぜんぶ とうろくずみ）。' : 'みためを おして、あたらしい モンスターの 絵を えらんでね。（とうろくずみの みためは えらべません）');
   renderLooks();
 }
 function renderLooks() {
@@ -863,7 +865,10 @@ function renderLooks() {
     row.querySelectorAll('[data-lookcv]').forEach(cv => { try { Art.drawChar(cv, 'boss' + cv.dataset.lookcv, 2); } catch (e) {} });
   }
   row.querySelectorAll('[data-looklbl]').forEach(sp => { const m = monOfLook(Number(sp.dataset.looklbl)); sp.textContent = m ? m.name : `みため${sp.dataset.looklbl}`; });
-  row.querySelectorAll('[data-look]').forEach(b => b.classList.toggle('on', Number(b.dataset.look) === zkLook));
+  row.querySelectorAll('[data-look]').forEach(b => {
+    b.classList.toggle('on', Number(b.dataset.look) === zkLook);
+    b.disabled = !zkCur && !!monOfLook(Number(b.dataset.look));   // v4.0.6 あたらしく とうろく中は、もう つかわれている みために できない
+  });
 }
 // みためを押したとき：なおしている途中なら その みための モンスターに切りかえ（いなければ あたらしく）。あたらしく とうろく中なら 絵を えらぶ
 function pickLook(n) {
@@ -871,12 +876,16 @@ function pickLook(n) {
   if (zkCur) {
     const m = monOfLook(n);
     if (m) fillZukanForm(m.id); else fillZukanForm('', n);
-  } else { zkLook = n; renderLooks(); }
+  } else {
+    if (monOfLook(n)) return;   // v4.0.6 つかわれている みためには できない
+    zkLook = n; renderLooks();
+  }
 }
 function saveZukanForm() {
   const $ = x => document.getElementById(x);
   const id = zkCur, name = $('zkName').value.trim();
   if (!name) { $('zkMsg').textContent = 'なまえを いれてね'; return; }
+  if (!(id && ZUKAN.some(m => m.id === id)) && monOfLook(zkLook)) { $('zkMsg').textContent = 'その みための モンスターは もう いるよ'; return; }   // v4.0.6
   const data = { name: name.slice(0, 12), look: zkLook, title: $('zkTitle').value.trim(), desc: $('zkDesc').value.trim(), attacks: parseAttacks($('zkAtk').value) };
   let list, newId = id;
   if (id && ZUKAN.some(m => m.id === id)) list = ZUKAN.map(m => m.id === id ? { ...m, ...data } : m);
