@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.6';
+const APP_VERSION = '4.0.7';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -18,7 +18,9 @@ const lastDayOfMonth = d => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDa
 const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-let cloudReady = false;          // クラウドのデータを読み込み終わったか
+let cloudReady = false;          // クラウドのデータを読み込み終わったか（端末内のキャッシュでもtrue）
+let serverSynced = false;        // v4.0.7 サーバーの最新（tasks・rules）を受け取ったか。受け取るまで繰り返し生成・バトルをしない
+let startPending = false;        // v4.0.7 サーバーの最新を受け取ったら startOfDay をする
 const genIds = new Set();        // 繰り返しで自動生成したタスクID（同期時に完了状態を上書きしないため）
 
 function dueLabel(k) {
@@ -290,6 +292,7 @@ function autoMoveToToday() {
   }
 }
 function dailyRefresh() {
+  if (!serverSynced) return;   // v4.0.7 古いキャッシュだけで繰り返しを作らない（完了ずみが未完了で復活するため）
   generateRepeats();
   autoMoveToToday();
   ensureOrder();
@@ -1900,7 +1903,7 @@ function bind() {
   let lastSig = overdueSig();
   const tick = () => {
     if (!cloudReady) { updateBadge(); return; }
-    if (S.lastDate !== todayKey()) { dailyRefresh(); render(); lastSig = overdueSig(); }
+    if (serverSynced && S.lastDate !== todayKey()) { dailyRefresh(); render(); lastSig = overdueSig(); }
     else {
       // 時刻を過ぎて赤表示に変わるタスクがあれば描き直す（入力中・ドラッグ中は待つ）
       const sig = overdueSig();
@@ -2158,7 +2161,7 @@ window.App = {
     // v4.0.3 アプリを開くたびに：やり残しがあれば上司バトル（毎回）。なければ「あらわれた！」（この端末で1日1回だけ。OKを押すまで出しておく）
     if (first) {
       openedMsg = true;
-      setTimeout(startOfDay, 600);
+      startPending = true;   // v4.0.7 バトルは onServerSynced（サーバーの最新を受け取ったあと）で
     }
     if (!S.lists.some(l => l.id === TODAY_ID)) S.lists.unshift({ id: TODAY_ID, name: '🔥 今日', color: PALETTE[0] });
     ensureMemoLists();  // 古い形のメモ（列が1つだけ）をメモ用リストに移す
@@ -2171,9 +2174,16 @@ window.App = {
         localStorage.setItem('kyou-task-pencil', '1');
       }
     } catch (e) {}
-    dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）
+    dailyRefresh();  // 日付が変わっていれば繰り返し生成・今日への移動（結果はクラウドへ）。v4.0.7〜 サーバーの最新を受け取るまでは何もしない
     render();
     setTimeout(() => autoBackup(false), 3000);   // v3.9 1日1回の自動バックアップ（クラウドの最新を読み終えてから）
+  },
+  // v4.0.7 サーバーの最新（tasks・rules）が届いた：ここで初めて繰り返し生成・今日への移動・バトルをする
+  onServerSynced() {
+    serverSynced = true;
+    dailyRefresh();
+    render();
+    if (startPending) { startPending = false; setTimeout(startOfDay, 600); }
   },
   cloudStatus(st, err) {
     const el = document.getElementById('syncStatus');
@@ -2190,7 +2200,7 @@ window.App = {
     document.getElementById('loginScreen').hidden = !show;
     document.getElementById('loginScreen').classList.remove('checking');
     if (show) setTimeout(() => { try { Art.drawHero(document.getElementById('loginHero')); } catch (e) {} }, 0);
-    if (show) { cloudReady = false; document.getElementById('syncStatus').textContent = ''; }
+    if (show) { cloudReady = false; serverSynced = false; startPending = false; document.getElementById('syncStatus').textContent = ''; }
   },
   // v3.9：ログアウトしたときに、この端末の中の控えを消す（クラウドのデータは消さない）
   wipeLocal() {

@@ -154,19 +154,30 @@ async function linkDevice() {
 function listen() {
   stopListening();
   const loaded = new Set();
+  // v4.0.7 tasks と rules が「サーバーから」届いたかを覚えておく。端末内のキャッシュ（古いことがある）だけの間は、
+  // 繰り返しの生成・やり残しの数え・バトルをしない（古い分身を未完了で作り直し、完了ずみを上書きしてしまうため）
+  const serverSeen = new Set();
+  let serverDone = false;
+  const checkServer = () => {
+    if (serverDone || !ready || !serverSeen.has('tasks') || !serverSeen.has('rules')) return;
+    serverDone = true;
+    App.onServerSynced();
+  };
   for (const c of COLS) {
-    const un = onSnapshot(colRef(c), { includeMetadataChanges: c === 'tasks' }, snap => {
+    const un = onSnapshot(colRef(c), { includeMetadataChanges: c === 'tasks' || c === 'rules' }, snap => {
       if (c === 'tasks') {
         const m = snap.metadata;
         App.cloudStatus(m.hasPendingWrites ? 'pending' : m.fromCache ? 'offline' : 'synced');
       }
-      if (loaded.has(c) && snap.docChanges().length === 0) return;
+      if ((c === 'tasks' || c === 'rules') && !snap.metadata.fromCache) serverSeen.add(c);
+      if (loaded.has(c) && snap.docChanges().length === 0) { checkServer(); return; }
       const items = snap.docs.map(d => ({ ...d.data(), id: d.id }));
       synced[c] = new Map(items.map(it => [it.id, canon(it)]));
       App.applyRemote(c, items);
       loaded.add(c);
       if (!ready && loaded.size === COLS.length) { ready = true; App.onCloudReady(); }
       else if (ready) App.render();
+      checkServer();
     }, err => App.cloudStatus('error', err));
     unsubs.push(un);
   }
