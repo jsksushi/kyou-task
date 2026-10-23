@@ -2,7 +2,7 @@
 'use strict';
 
 // ▼ 改修してアップするたびに、ここと version.json と sw.js の CACHE を同じ番号にそろえて上げる
-const APP_VERSION = '4.0.9';
+const APP_VERSION = '4.0.10';
 const STORE_KEY = 'kyou-task-data-v1';
 const TODAY_ID = 'today';
 const PALETTE = ['#fbe3d6','#fff4c2','#d7ecfb','#dcf2e0','#fde2ea','#e4f1f0','#efe6d8','#e8eaed','#ece3f7'];
@@ -759,7 +759,7 @@ function renderItems() {
    ・meta/battle：lastDate（最後に戦った日。v4.0.3〜 記録だけ）、seen（出会った回数）
    ・期限が過ぎて未完了のタスクがあると、アプリを開くたびに戦う（v4.0.3〜。v4.0〜4.0.2 は1日1回）。ダメージ＝やり残しの件数（毎回） */
 const ZUKAN_KEY = 'kyou-task-zukan', BATTLE_KEY = 'kyou-task-battle';
-const LOOKS = [1, 2, 3, 4, 5, 6, 7];   // v4.0.9 みため7を追加
+const LOOKS = [1, 2, 3, 4, 5, 6, 7, 8];   // v4.0.9 みため7、v4.0.10 みため8を追加
 let ZUKAN = [], BATTLE = { lastDate: '', seen: {} };
 try { ZUKAN = JSON.parse(localStorage.getItem(ZUKAN_KEY) || '[]') || []; } catch (e) {}
 try { BATTLE = { lastDate: '', seen: {}, ...(JSON.parse(localStorage.getItem(BATTLE_KEY) || '{}') || {}) }; } catch (e) {}
@@ -833,7 +833,7 @@ function renderZukan() {
 }
 
 /* モンスターの とうろく・なおす（けすは なし）
-   v4.0.4：「どれを」の選択をやめた。みため1〜7を押すと、そのみための モンスターの中身が出て、そのまま なおせる。
+   v4.0.4：「どれを」の選択をやめた。みため1〜8を押すと、そのみための モンスターの中身が出て、そのまま なおせる。
    あたらしく とうろくするときだけ 上の「＋ あたらしく とうろく」を押す（そのときは みためを押すと 絵を えらぶ） */
 let zkLook = 1, zkCur = '';   // zkCur：なおしている モンスターのID（'' は あたらしく とうろく）
 const monOfLook = n => ZUKAN.find(m => lookOf(m) === n);
